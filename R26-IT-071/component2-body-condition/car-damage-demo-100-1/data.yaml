@@ -1,0 +1,20 @@
+names:
+- Bonnet
+- Bumper
+- Dent
+- Dickey
+- Door
+- Fender
+- Light
+- Scratch
+- Windshield
+nc: 9
+roboflow:
+  license: Private
+  project: car-damage-demo-100
+  url: https://app.roboflow.com/minoshs-workspace/car-damage-demo-100/1
+  version: 1
+  workspace: minoshs-workspace
+test: ../test/images
+train: ../train/images
+val: ../valid/images
