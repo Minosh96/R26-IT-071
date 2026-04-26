@@ -3,6 +3,8 @@ import io
 import uuid
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from ultralytics import YOLO
 from PIL import Image
 from dotenv import load_dotenv
@@ -11,8 +13,20 @@ load_dotenv()
 
 app = FastAPI(title="Vehicle Body Condition Analysis API")
 
+# Add CORS Middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 for folder in ["uploads", "outputs", "runs"]:
     os.makedirs(folder, exist_ok=True)
+
+# Mount static files to serve output images
+app.mount("/outputs", StaticFiles(directory="outputs"), name="outputs")
 
 MODEL_PATH = os.getenv("MODEL_PATH", "damage_model.pt")
 CONF_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", 0.25))
@@ -37,15 +51,9 @@ async def startup_event():
 
 
 CLASS_PENALTY = {
-    "Bonnet": 6,
-    "Bumper": 8,
     "Dent": 15,
-    "Dickey": 6,
-    "Door": 6,
-    "Fender": 6,
-    "Light": 5,
     "Scratch": 10,
-    "Windshield": 5,
+    "Rust": 12,
 }
 
 
@@ -152,9 +160,19 @@ async def analyze_vehicle(
                     view_detections.append(detection)
                     all_detections.append(detection)
 
+            # Generate visualized result
+            result_image_bgr = results[0].plot()
+            result_image_rgb = result_image_bgr[:, :, ::-1] # Convert BGR to RGB
+            result_image = Image.fromarray(result_image_rgb)
+            
+            output_filename = f"result_{session_id}_{view_name}.jpg"
+            output_path = os.path.join("outputs", output_filename)
+            result_image.save(output_path)
+
             view_analysis[view_name] = {
                 "count": len(view_detections),
-                "issues": view_detections
+                "issues": view_detections,
+                "visual_url": f"/outputs/{output_filename}"
             }
 
         condition_score = calculate_score(all_detections)
