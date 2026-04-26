@@ -1,0 +1,66 @@
+{
+  "currency": "LKR",
+  "collection_year": 2026,
+  "market": "Sri Lanka",
+  "source": "Field survey from 5 local sellers and repair centers, Sri Lanka 2026",
+
+  "body_parts": {
+    "head_light":       {"min": 6500,   "max": 15000,  "type": "replacement"},
+    "tail_light":       {"min": 4500,   "max": 6750,   "type": "replacement"},
+    "fender":           {"min": 4000,   "max": 8000,   "type": "replacement"},
+    "door_panel_rear":  {"min": 25000,  "max": 30000,  "type": "replacement"},
+    "door_panel_front": {"min": 32000,  "max": 32000,  "type": "replacement"},
+    "back_door":        {"min": 15000,  "max": 55000,  "type": "replacement"},
+    "side_mirror":      {"min": 4000,   "max": 7850,   "type": "replacement"},
+    "bumper_front":     {"min": 5000,   "max": 19000,  "type": "replacement"},
+    "bumper_rear":      {"min": 6500,   "max": 12500,  "type": "replacement"},
+    "bonnet":           {"min": 22000,  "max": 28779,  "type": "replacement"},
+    "full_body_paint":  {"min": 120000, "max": 120000, "type": "service"},
+    "panel_repair":     {"min": 10000,  "max": 35000,  "type": "service"}
+  },
+
+  "electrical": {
+    "battery_35ah":  {"min": 25500, "max": 28000, "type": "replacement"},
+    "starter_motor": {"min": 12000, "max": 18000, "type": "replacement"}
+  },
+
+  "engine_faults": {
+    "healthy": {
+      "min": 0, "max": 0,
+      "description": "No repair needed",
+      "repair_type": "none"
+    },
+    "knocking": {
+      "min": 35000, "max": 85000,
+      "description": "Engine bearing or piston repair — requires workshop strip-down",
+      "repair_type": "major"
+    },
+    "misfiring": {
+      "min": 8000, "max": 25000,
+      "description": "Spark plug replacement, ignition coil or injector cleaning",
+      "repair_type": "minor"
+    },
+    "tappet": {
+      "min": 5000, "max": 18000,
+      "description": "Valve clearance adjustment",
+      "repair_type": "minor"
+    },
+    "rotational_imbalance": {
+      "min": 8000, "max": 30000,
+      "description": "Engine mount replacement or rotating component balancing",
+      "repair_type": "moderate"
+    },
+    "battery_fault": {
+      "min": 25500, "max": 40000,
+      "description": "Battery replacement LKR 25,500-28,000 plus starter motor if needed LKR 12,000",
+      "repair_type": "minor"
+    }
+  },
+
+  "body_damage_categories": {
+    "none":     {"min": 0,      "max": 0,      "description": "No visible damage"},
+    "minor":    {"min": 10000,  "max": 25000,  "description": "Surface scratches, small dents, minor paint chips"},
+    "moderate": {"min": 25000,  "max": 80000,  "description": "Dented panels, broken lights, damaged bumpers"},
+    "severe":   {"min": 80000,  "max": 200000, "description": "Multiple damaged panels, bonnet, door replacement, full repaint"}
+  }
+}
