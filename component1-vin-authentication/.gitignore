@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+ENV/
+data/clean_vin/*
+!data/clean_vin/.gitkeep
+data/tampered_vin/*
+!data/tampered_vin/.gitkeep
+data/test/*
+!data/test/.gitkeep
+models/*.pkl
+models/*.h5
+models/*.pth
