@@ -35,6 +35,11 @@ train_ds = train_ds.prefetch(buffer_size=AUTOTUNE)
 val_ds = val_ds.prefetch(buffer_size=AUTOTUNE)
 test_ds = test_ds.prefetch(buffer_size=AUTOTUNE)
 
+
+train_ds = train_ds.map(lambda x, y: (preprocess_input(x), y))
+val_ds = val_ds.map(lambda x, y: (preprocess_input(x), y))
+test_ds = test_ds.map(lambda x, y: (preprocess_input(x), y))
+
 base_model = MobileNetV2(
     input_shape=(224, 224, 3),
     include_top=False,
@@ -45,7 +50,6 @@ base_model.trainable = False
 
 model = models.Sequential([
     layers.Input(shape=(224, 224, 3)),
-    layers.Lambda(preprocess_input),
     base_model,
     layers.GlobalAveragePooling2D(),
     layers.Dropout(0.3),
