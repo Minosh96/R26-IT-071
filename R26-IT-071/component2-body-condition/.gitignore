@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+# YOLO / Datasets
+runs/
+datasets/
+*.pt
+outputs/
+uploads/
+
+# OS
+.DS_Store
+Thumbs.db
