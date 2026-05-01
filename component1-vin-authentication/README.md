@@ -56,3 +56,11 @@ You can test the endpoints using the built-in Swagger UI:
 - `models/`: Model training scripts and saved model files.
 - `preprocessing/`: Scripts for data preparation and synthetic tampering generation.
 - `tests/`: Unit and integration tests.
+
+## note
+
+- cd D:\Backup\Savinda\SLIIT\Y4S1\RP
+- vinenv\Scripts\activate                     
+- cd D:\Backup\Savinda\SLIIT\Y4S1\RP\R26-IT-071\R26-IT-071\component1-vin-authentication
+- uvicorn api.app:app
+
