@@ -1,0 +1,11 @@
+.env
+*.env
+pycache/
+*.pyc
+venv/
+env/
+.venv/
+models/saved/
+data/processed/
+.DS_Store
+Thumbs.db
