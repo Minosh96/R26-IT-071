@@ -1,0 +1,9 @@
+ultralytics
+roboflow
+fastapi
+uvicorn
+python-dotenv
+opencv-python
+python-multipart
+Pillow
+numpy

@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "250082632713",
+    "project_id": "watinakama",
+    "storage_bucket": "watinakama.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:250082632713:android:23706d9dea634937b704d8",
+        "android_client_info": {
+          "package_name": "com.example.watinakama_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "250082632713-t8c6vho473isem8fhkig655fl28rio2t.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAz2RKomFglGAx6Q6ORpVPX0T2Z-a2HX68"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "250082632713-t8c6vho473isem8fhkig655fl28rio2t.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
