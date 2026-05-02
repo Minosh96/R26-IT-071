@@ -5,6 +5,7 @@ import '../widgets/wave_header.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/custom_button.dart';
 import '../services/auth_service.dart';
+import '../widgets/custom_toast.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -54,12 +55,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
       setState(() => _isLoading = false);
 
       if (result['status'] == 'success') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Account created! Please login.'),
-            backgroundColor: AppColors.statusGreen,
-          ),
-        );
+        ToastService.show(context, 'Account created! Please login.');
         Navigator.pushReplacementNamed(context, '/login');
       } else {
         _showError(result['message']);
@@ -68,12 +64,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.redAccent,
-      ),
-    );
+    ToastService.show(context, message, isError: true);
   }
 
   @override

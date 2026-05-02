@@ -10,6 +10,7 @@ import '../widgets/wave_header.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/custom_button.dart';
 import '../services/auth_service.dart';
+import '../widgets/custom_toast.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -117,9 +118,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Profile updated successfully"), backgroundColor: AppColors.statusGreen),
-        );
+        ToastService.show(context, "Profile updated successfully");
         Navigator.pop(context);
       }
     } on FirebaseAuthException catch (e) {
@@ -136,9 +135,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.redAccent),
-    );
+    ToastService.show(context, message, isError: true);
   }
 
   @override

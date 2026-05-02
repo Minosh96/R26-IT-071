@@ -6,6 +6,7 @@ import '../widgets/custom_text_field.dart';
 import '../widgets/custom_button.dart';
 import '../services/auth_service.dart';
 import '../services/biometric_service.dart';
+import '../widgets/custom_toast.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -120,12 +121,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.redAccent,
-      ),
-    );
+    ToastService.show(context, message, isError: true);
   }
 
   @override

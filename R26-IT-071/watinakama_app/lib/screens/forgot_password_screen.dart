@@ -4,6 +4,7 @@ import '../widgets/wave_header.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/custom_button.dart';
 import '../services/auth_service.dart';
+import '../widgets/custom_toast.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -33,13 +34,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       setState(() => _isLoading = false);
 
       if (result['status'] == 'success') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Reset email sent! Check your inbox and follow the link to reset your password.'),
-            backgroundColor: AppColors.statusGreen,
-          ),
-        );
-        // Wait a moment so the user can read the snackbar, then navigate back
+        ToastService.show(context, 'Reset email sent! Check your inbox and follow the link to reset your password.');
+        // Wait a moment so the user can read the toast, then navigate back
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) Navigator.pushReplacementNamed(context, '/login');
         });
@@ -50,12 +46,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.redAccent,
-      ),
-    );
+    ToastService.show(context, message, isError: true);
   }
 
   @override
