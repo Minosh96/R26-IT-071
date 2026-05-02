@@ -5,6 +5,7 @@ import '../constants/app_colors.dart';
 import '../widgets/wave_header.dart';
 import '../widgets/custom_button.dart';
 import '../services/auth_service.dart';
+import '../widgets/custom_toast.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,6 +18,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final AuthService _auth = AuthService();
   String _userName = "User";
   String? _profilePicPath;
+  DateTime? _lastPressedAt;
 
   final List<Map<String, String>> _inspections = [
     {"model": "Suzuki Alto", "date": "2026-04-15", "reg": "WP CAA 4512"},
@@ -74,58 +76,76 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        
+        final now = DateTime.now();
+        final backButtonHasNotBeenPressedOrSnackBarHasBeenClosed =
+            _lastPressedAt == null || now.difference(_lastPressedAt!) > const Duration(seconds: 2);
+
+        if (backButtonHasNotBeenPressedOrSnackBarHasBeenClosed) {
+          _lastPressedAt = now;
+          ToastService.show(context, "Press back again to logout");
+        } else {
+          _handleLogout();
+        }
+      },
+      child: Scaffold(
       backgroundColor: AppColors.darkNavyBg,
       body: SingleChildScrollView(
         child: Column(
           children: [
             // Custom Header with Wave and Profile info
-            Stack(
-              children: [
-                const WaveHeader(height: 240),
-                // Profile & Logout Actions
-                Positioned(
-                  top: 40,
-                  right: 16,
-                  child: Row(
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.logout, color: AppColors.textDark, size: 20),
-                        onPressed: _handleLogout,
-                      ),
-                      GestureDetector(
-                        onTap: () async {
-                          await Navigator.pushNamed(context, '/profile');
-                          _loadUserName(); // Refresh name and picture when returning
-                        },
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 18,
-                              backgroundColor: Colors.white24,
-                              backgroundImage: (_profilePicPath != null && File(_profilePicPath!).existsSync())
-                                  ? FileImage(File(_profilePicPath!))
-                                  : null,
-                              child: (_profilePicPath == null || !File(_profilePicPath!).existsSync())
-                                  ? const Icon(Icons.person, color: AppColors.textDark, size: 20)
-                                  : null,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              "Hi, $_userName",
-                              style: const TextStyle(
-                                color: AppColors.textDark,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+            WaveHeader(
+              height: 120,
+              child: Column(
+                children: [
+                  // Profile & Logout Actions Row
+                  Padding(
+                    padding: const EdgeInsets.only(top: 35, right: 16, left: 16),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.logout, color: AppColors.textDark, size: 20),
+                          onPressed: _handleLogout,
                         ),
-                      ),
-                    ],
+                        GestureDetector(
+                          onTap: () async {
+                            await Navigator.pushNamed(context, '/profile');
+                            _loadUserName(); // Refresh name and picture when returning
+                          },
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 18,
+                                backgroundColor: Colors.white24,
+                                backgroundImage: (_profilePicPath != null && File(_profilePicPath!).existsSync())
+                                    ? FileImage(File(_profilePicPath!))
+                                    : null,
+                                child: (_profilePicPath == null || !File(_profilePicPath!).existsSync())
+                                    ? const Icon(Icons.person, color: AppColors.textDark, size: 20)
+                                    : null,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                "Hi, $_userName",
+                                style: const TextStyle(
+                                  color: AppColors.textDark,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             
             // Search Bar Section
@@ -272,6 +292,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 }

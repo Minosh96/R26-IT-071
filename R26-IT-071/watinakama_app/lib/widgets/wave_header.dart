@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import '../constants/app_colors.dart';
 
 class WaveHeader extends StatelessWidget {
   final double height;
+  final Widget? child;
 
-  const WaveHeader({super.key, this.height = 280});
+  const WaveHeader({super.key, this.height = 280, this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -18,42 +18,48 @@ class WaveHeader extends StatelessWidget {
           color: AppColors.lightBlueTop,
         ),
         
-        // Middle layer: Custom wave transition to dark navy
-        CustomPaint(
-          size: Size(double.infinity, height),
-          painter: WavePainter(color: AppColors.darkNavyBg),
+        // Middle layer: Custom wave transition to dark navy (only at the bottom)
+        Positioned(
+          bottom: 0,
+          left: 0,
+          right: 0,
+          child: CustomPaint(
+            size: const Size(double.infinity, 80), // Keep the wave height controlled
+            painter: HeaderWavePainter(color: AppColors.darkNavyBg),
+          ),
         ),
         
-        // Top layer: Centered content
+        // Top layer: Content
         SizedBox(
           height: height,
           width: double.infinity,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            children: [
-              const SizedBox(height: 35), // Move up further
-              
-              // Car Logo Image
-              Image.asset(
-                'assets/images/car_logo.png',
-                height: 140,
-                width: 140,
-                fit: BoxFit.contain,
-              ),
-              
-              const SizedBox(height: 4),
-              
-              // App Name
-              const Text(
-                "වටිනාකම.LK",
-                style: TextStyle(
-                  fontSize: 22, // Slightly smaller text
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textDark,
-                  fontFamily: 'Noto Sans Sinhala',
-                ),
-              ),
-            ],
+          child: child ?? _buildDefaultContent(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDefaultContent() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.start,
+      children: [
+        const SizedBox(height: 30), // Slightly less top padding
+        // Car Logo Image
+        Image.asset(
+          'assets/images/car_logo.png',
+          height: 120, // Reduced from 140
+          width: 120,
+          fit: BoxFit.contain,
+        ),
+        const SizedBox(height: 2), // Tighter spacing
+        // App Name
+        const Text(
+          "වටිනාකම.LK",
+          style: TextStyle(
+            fontSize: 20, // Slightly smaller text
+            fontWeight: FontWeight.bold,
+            color: AppColors.textDark,
+            fontFamily: 'Noto Sans Sinhala',
           ),
         ),
       ],
@@ -61,9 +67,9 @@ class WaveHeader extends StatelessWidget {
   }
 }
 
-class WavePainter extends CustomPainter {
+class HeaderWavePainter extends CustomPainter {
   final Color color;
-  WavePainter({required this.color});
+  HeaderWavePainter({required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -72,18 +78,18 @@ class WavePainter extends CustomPainter {
       ..style = PaintingStyle.fill;
 
     final path = Path();
-    // Start from bottom left
+    // Start at bottom left
     path.moveTo(0, size.height);
-    // Move up slightly to start the curve
-    path.lineTo(0, size.height - 20);
-    // Lowered peak further to 45px
-    path.quadraticBezierTo(
-      size.width / 2, 
-      size.height - 45, // Lowered from 60 to 45
-      size.width, 
-      size.height - 20
+    // Curve start
+    path.lineTo(0, size.height * 0.4);
+    
+    // Refined smooth S-curve transition (more subtle)
+    path.cubicTo(
+      size.width * 0.3, size.height * 0.2, // Start slightly lower
+      size.width * 0.6, size.height * 0.8, // End slightly higher
+      size.width, size.height * 0.3,
     );
-    // Close the shape at the bottom
+    
     path.lineTo(size.width, size.height);
     path.close();
 

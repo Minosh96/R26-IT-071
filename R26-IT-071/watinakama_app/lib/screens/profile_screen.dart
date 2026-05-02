@@ -165,72 +165,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           children: [
             // Top Section with Wave
-            Container(
+            WaveHeader(
               height: 240,
-              width: double.infinity,
-              color: AppColors.lightBlueTop,
-              child: Stack(
-                children: [
-                  // Reusing Wave Painter concept from WaveHeader if possible, 
-                  // but here we build the centered content
-                  Center(
-                    child: Column(
+              child: Center(
+                child: Column(
+                  children: [
+                    const SizedBox(height: 40),
+                    Stack(
                       children: [
-                        const SizedBox(height: 40),
-                        Stack(
-                          children: [
-                            CircleAvatar(
-                              radius: 55,
-                              backgroundColor: Colors.white,
-                              backgroundImage: _profileImage != null
-                                  ? FileImage(_profileImage!)
-                                  : null,
-                              child: _profileImage == null
-                                  ? const Icon(Icons.person, size: 55, color: Colors.grey)
-                                  : null,
-                            ),
-                            Positioned(
-                              bottom: 0,
-                              right: 0,
-                              child: GestureDetector(
-                                onTap: _pickImage,
-                                child: Container(
-                                  width: 34,
-                                  height: 34,
-                                  decoration: BoxDecoration(
-                                    color: AppColors.primaryBlue,
-                                    shape: BoxShape.circle,
-                                    border: Border.all(color: Colors.white, width: 2),
-                                  ),
-                                  child: const Icon(Icons.camera_alt, color: Colors.white, size: 18),
-                                ),
-                              ),
-                            ),
-                          ],
+                        CircleAvatar(
+                          radius: 55,
+                          backgroundColor: Colors.white,
+                          backgroundImage: _profileImage != null
+                              ? FileImage(_profileImage!)
+                              : null,
+                          child: _profileImage == null
+                              ? const Icon(Icons.person, size: 55, color: Colors.grey)
+                              : null,
                         ),
-                        const SizedBox(height: 10),
-                        Text(
-                          "Hi, $_userName",
-                          style: const TextStyle(
-                            color: AppColors.textDark,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: GestureDetector(
+                            onTap: _pickImage,
+                            child: Container(
+                              width: 34,
+                              height: 34,
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryBlue,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2),
+                              ),
+                              child: const Icon(Icons.camera_alt, color: Colors.white, size: 18),
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  ),
-                  // Wave decoration at bottom
-                  Positioned(
-                    bottom: 0,
-                    left: 0,
-                    right: 0,
-                    child: CustomPaint(
-                      size: const Size(double.infinity, 50),
-                      painter: WavePainter(color: AppColors.darkNavyBg),
+                    const SizedBox(height: 10),
+                    Text(
+                      "Hi, $_userName",
+                      style: const TextStyle(
+                        color: AppColors.textDark,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
 
@@ -418,29 +400,3 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-class WavePainter extends CustomPainter {
-  final Color color;
-  WavePainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color;
-    final path = Path();
-    path.moveTo(0, size.height);
-    path.lineTo(0, size.height * 0.2);
-    path.quadraticBezierTo(
-      size.width * 0.25, 0,
-      size.width * 0.5, size.height * 0.5,
-    );
-    path.quadraticBezierTo(
-      size.width * 0.75, size.height,
-      size.width, size.height * 0.5,
-    );
-    path.lineTo(size.width, size.height);
-    path.close();
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
-}
