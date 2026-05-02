@@ -6,6 +6,7 @@ import 'screens/login_screen.dart';
 import 'screens/signup_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/forgot_password_screen.dart';
+import 'screens/profile_screen.dart';
 import 'constants/app_colors.dart';
 
 void main() async {
@@ -43,6 +44,7 @@ class WatinakamaApp extends StatelessWidget {
         '/signup': (context) => const SignUpScreen(),
         '/forgot-password': (context) => const ForgotPasswordScreen(),
         '/home':   (context) => const HomeScreen(),
+        '/profile': (context) => const ProfileScreen(),
       },
     );
   }

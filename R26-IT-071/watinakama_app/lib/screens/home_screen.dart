@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_colors.dart';
 import '../widgets/wave_header.dart';
 import '../widgets/custom_button.dart';
@@ -14,6 +16,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final AuthService _auth = AuthService();
   String _userName = "User";
+  String? _profilePicPath;
 
   final List<Map<String, String>> _inspections = [
     {"model": "Suzuki Alto", "date": "2026-04-15", "reg": "WP CAA 4512"},
@@ -29,8 +32,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadUserName() async {
     final name = await _auth.getUserName();
+    
+    final prefs = await SharedPreferences.getInstance();
+    final picPath = prefs.getString('user_profile_pic');
+    
     if (mounted) {
-      setState(() => _userName = name);
+      setState(() {
+        _userName = name;
+        _profilePicPath = picPath;
+      });
     }
   }
 
@@ -83,18 +93,33 @@ class _HomeScreenState extends State<HomeScreen> {
                         icon: const Icon(Icons.logout, color: AppColors.textDark, size: 20),
                         onPressed: _handleLogout,
                       ),
-                      const CircleAvatar(
-                        radius: 18,
-                        backgroundColor: Colors.white24,
-                        child: Icon(Icons.person, color: AppColors.textDark, size: 20),
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        "Hi, $_userName",
-                        style: const TextStyle(
-                          color: AppColors.textDark,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                      GestureDetector(
+                        onTap: () async {
+                          await Navigator.pushNamed(context, '/profile');
+                          _loadUserName(); // Refresh name and picture when returning
+                        },
+                        child: Row(
+                          children: [
+                            CircleAvatar(
+                              radius: 18,
+                              backgroundColor: Colors.white24,
+                              backgroundImage: (_profilePicPath != null && File(_profilePicPath!).existsSync())
+                                  ? FileImage(File(_profilePicPath!))
+                                  : null,
+                              child: (_profilePicPath == null || !File(_profilePicPath!).existsSync())
+                                  ? const Icon(Icons.person, color: AppColors.textDark, size: 20)
+                                  : null,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              "Hi, $_userName",
+                              style: const TextStyle(
+                                color: AppColors.textDark,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
