@@ -189,44 +189,105 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
           
           const SizedBox(height: 16),
           
-          // Actions
+          // Action buttons row
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildActionButton(
+                  icon: Icons.camera_alt,
+                  label: _capturedPaths[_currentAngle] == null ? "Capture" : "Retake",
+                  onTap: () => _pickImage(ImageSource.camera),
+                  isCamera: true,
+                ),
+                _buildActionButton(
+                  icon: Icons.photo_library_outlined,
+                  label: "Gallery",
+                  onTap: () => _pickImage(ImageSource.gallery),
+                ),
+              ],
+            ),
+          ),
+          
+          const SizedBox(height: 24),
+          
+          // Navigation buttons
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Row(
-                  children: [
-                    ElevatedButton(
-                      onPressed: () => _pickImage(ImageSource.camera),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryBlue,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                      ),
-                      child: Text(_capturedPaths[_currentAngle] == null ? "Capture" : "Retake"),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1A1A2E),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
                     ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      icon: const Icon(Icons.photo_library_outlined, color: Colors.white70),
-                      onPressed: () => _pickImage(ImageSource.gallery),
-                    ),
-                  ],
+                    padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                  ),
+                  child: const Text("Back"),
                 ),
                 ElevatedButton(
                   onPressed: _handleNext,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: _allCaptured ? const Color(0xFF2E7D32) : Colors.grey.shade800,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                    backgroundColor: const Color(0xFF2E7D32),
+                    foregroundColor: Colors.white,
+                    disabledBackgroundColor: const Color(0xFF2E7D32).withOpacity(0.6),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                    ),
                     padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
                   ),
-                  child: const Text("Next", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                  child: const Text(
+                    "Next",
+                    style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
                 ),
               ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    bool isCamera = false,
+  }) {
+    return Column(
+      children: [
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: isCamera ? 64 : 52,
+            height: isCamera ? 64 : 52,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isCamera ? AppColors.primaryBlue : const Color(0xFF1A2035),
+              border: isCamera ? Border.all(
+                color: Colors.white.withOpacity(0.3),
+                width: 3,
+              ) : null,
+            ),
+            child: Icon(
+              icon,
+              color: Colors.white,
+              size: isCamera ? 30 : 24,
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          style: const TextStyle(color: AppColors.textGray, fontSize: 11),
+        ),
+      ],
     );
   }
 }
