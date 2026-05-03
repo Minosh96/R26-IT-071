@@ -13,6 +13,7 @@ from functools import wraps
 from flask import Flask, request, jsonify, abort
 from flask_cors import CORS
 from dotenv import load_dotenv
+from flasgger import Swagger
 
 # Ensure the project root is in the python path so we can import inference
 project_root = str(pathlib.Path(__file__).parent.parent.absolute())
@@ -38,6 +39,7 @@ PORT = int(os.getenv("FLASK_PORT", 5003))
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)  # Enable Cross-Origin Resource Sharing
+Swagger(app) # Initialize Swagger UI
 app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE_MB * 1024 * 1024
 
 # Ensure upload directory exists
@@ -108,7 +110,12 @@ def internal_error(error):
 
 @app.route('/api/v1/health', methods=['GET'])
 def health_check():
-    """Public health check endpoint."""
+    """Public health check endpoint.
+    ---
+    responses:
+      200:
+        description: Service is healthy
+    """
     return jsonify({
         "status": "ok",
         "service": "engine-audio-classifier",
@@ -139,8 +146,25 @@ def test_pipeline():
 def analyze_engine_sound():
     """
     Analyzes an uploaded engine audio file.
-    Expects 'audio_file' as a multipart form-data.
-    Optional: 'session_id'
+    ---
+    parameters:
+      - name: Authorization
+        in: header
+        type: string
+        required: true
+        description: Bearer token
+      - name: audio_file
+        in: formData
+        type: file
+        required: true
+        description: Vehicle engine sound file (.wav, .mp3)
+      - name: session_id
+        in: formData
+        type: string
+        required: false
+    responses:
+      200:
+        description: Analysis successful
     """
     # 1. Validate audio_file exists
     if 'audio_file' not in request.files:
