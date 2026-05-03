@@ -39,6 +39,9 @@ The system is designed to detect five major engine conditions:
 ### 2. Setup
 Clone the repository and install dependencies:
 ```bash
+# Navigate to the component directory
+cd component3-engine-audio
+
 # Create virtual environment
 python -m venv venv
 
