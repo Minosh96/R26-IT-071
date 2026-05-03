@@ -179,4 +179,10 @@ class AuthService {
 
     return "User";
   }
+
+  /// Get user's profile picture path
+  Future<String?> getProfilePicPath() async {
+    final prefs = await _prefs;
+    return prefs.getString('user_profile_pic');
+  }
 }

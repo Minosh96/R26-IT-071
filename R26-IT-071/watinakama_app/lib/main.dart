@@ -7,6 +7,12 @@ import 'screens/signup_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/forgot_password_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/inspection/vehicle_info_screen.dart';
+import 'screens/inspection/audio_recording_screen.dart';
+import 'screens/inspection/vehicle_images_screen.dart';
+import 'screens/inspection/body_images_screen.dart';
+import 'screens/inspection/vin_scan_screen.dart';
+import 'screens/inspection/results_screen.dart';
 import 'constants/app_colors.dart';
 
 void main() async {
@@ -45,6 +51,11 @@ class WatinakamaApp extends StatelessWidget {
         '/forgot-password': (context) => const ForgotPasswordScreen(),
         '/home':   (context) => const HomeScreen(),
         '/profile': (context) => const ProfileScreen(),
+        '/inspection/info':    (context) => const VehicleInfoScreen(),
+        '/inspection/audio':   (context) => const AudioRecordingScreen(),
+        '/inspection/images':  (context) => const BodyImagesScreen(),
+        '/inspection/vin':     (context) => const VinScanScreen(),
+        '/inspection/results': (context) => const ResultsScreen(),
       },
     );
   }

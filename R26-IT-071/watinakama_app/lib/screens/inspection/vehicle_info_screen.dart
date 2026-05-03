@@ -26,6 +26,7 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
   bool _powerShutters = false;
   bool _powerMirrors = false;
   String _userName = '';
+  String? _profilePicPath;
 
   @override
   void initState() {
@@ -35,7 +36,13 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
 
   Future<void> _loadUserName() async {
     final name = await _auth.getUserName();
-    if (mounted) setState(() => _userName = name);
+    final pic = await _auth.getProfilePicPath();
+    if (mounted) {
+      setState(() {
+        _userName = name;
+        _profilePicPath = pic;
+      });
+    }
   }
 
   void _handleNext() {
@@ -79,28 +86,17 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
       appBar: InspectionAppBar(
         onBack: () => Navigator.pop(context),
         userName: _userName,
+        userPhotoUrl: _profilePicPath,
       ),
       body: Column(
         children: [
           // Step Progress Bar Section
-          Stack(
-            children: [
-              Container(
-                height: 80, // Slightly more than 50 to fit the stepper properly
-                width: double.infinity,
-                color: AppColors.lightBlueTop,
-                child: const ProgressStepper(currentStep: 0),
-              ),
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: CustomPaint(
-                  size: const Size(double.infinity, 30),
-                  painter: StepWavePainter(color: AppColors.darkNavyBg),
-                ),
-              ),
-            ],
+          Container(
+            height: 75,
+            width: double.infinity,
+            color: AppColors.lightBlueTop,
+            alignment: Alignment.center,
+            child: const ProgressStepper(currentStep: 0),
           ),
           
           Expanded(

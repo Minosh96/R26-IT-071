@@ -211,11 +211,7 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 40),
               child: CustomButton(
                 text: "Start",
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Inspection flow coming soon")),
-                  );
-                },
+                onPressed: () => Navigator.pushNamed(context, '/inspection/info'),
               ),
             ),
             
