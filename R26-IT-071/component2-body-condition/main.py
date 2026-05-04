@@ -26,7 +26,7 @@ app.add_middleware(
 # Configuration
 # ---------------------------------------------------------
 
-MODEL_PATH = "vehicle_damage_type_mobilenetv3_best.h5"
+MODEL_PATH = "efficientnetv2b0_damage_type_best.h5"
 IMG_SIZE = (224, 224)
 
 # This must match your training output:
