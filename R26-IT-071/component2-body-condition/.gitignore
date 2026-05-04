@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+uploads/
+outputs/
+runs/
+
+# Do not push trained model files unless your team specifically wants them
+*.h5
+*.keras
+*.pt
