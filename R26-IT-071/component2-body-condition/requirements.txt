@@ -1,7 +1,7 @@
 ultralytics
 roboflow
-fastapi
-uvicorn
+flask
+flask-cors
 python-dotenv
 opencv-python
 python-multipart

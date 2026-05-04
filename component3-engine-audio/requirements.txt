@@ -9,3 +9,4 @@ tensorflow-hub
 matplotlib
 soundfile
 python-dotenv
+setuptools<70

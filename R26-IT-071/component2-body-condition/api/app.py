@@ -1,14 +1,13 @@
 """
-Flask REST API for VIN Authentication.
-Provides endpoints for image analysis, health checks, and system testing.
+Flask REST API for Vehicle Body Condition Analysis.
+Provides endpoints for analyzing 5 vehicle views, health checks, and system testing.
 """
 
 import os
 import sys
-import uuid
 import pathlib
 from functools import wraps
-from flask import Flask, request, jsonify, abort
+from flask import Flask, request, jsonify, abort, send_from_directory
 from flask_cors import CORS
 from dotenv import load_dotenv
 from flasgger import Swagger
@@ -18,34 +17,37 @@ project_root = str(pathlib.Path(__file__).parent.parent.absolute())
 if project_root not in sys.path:
     sys.path.append(project_root)
 
-from inference.predict import predict_vin, load_models
+from inference.predict import predict_body_condition, load_models
 
 # Load environment variables from .env file
 load_dotenv()
 
 # --- Configuration ---
 API_TOKEN = os.getenv("API_SECRET_TOKEN", "dev-token-change-in-production")
-PORT = int(os.getenv("FLASK_PORT", 8000))
-
-ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+PORT = int(os.getenv("FLASK_PORT", 8080))
+CONF_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", 0.25))
 
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)  # Enable Cross-Origin Resource Sharing
 Swagger(app) # Initialize Swagger UI
 
+# Ensure directories exist for outputs
+os.makedirs("outputs", exist_ok=True)
+
 # --- Global Model Variables ---
-VIN_MODEL = None
+BODY_MODEL = None
 
 def initialize_system():
-    global VIN_MODEL
-    print("--- Initializing VIN Authentication System ---")
+    global BODY_MODEL
+    print("--- Initializing Body Condition Analysis System ---")
     try:
-        VIN_MODEL = load_models()
+        BODY_MODEL = load_models()
         print("Model loaded successfully.")
     except Exception as e:
         print(f"Critical Error: Failed to load models: {str(e)}")
-        sys.exit(1)
+        # Non-fatal during development if they don't have the weights
+        # sys.exit(1)
 
 # Initialize on module load
 initialize_system()
@@ -97,17 +99,21 @@ def health_check():
     """
     return jsonify({
         "status": "ok",
-        "service": "vin-authentication-api",
+        "service": "body-condition-api",
         "version": "1.0.0",
-        "models_loaded": VIN_MODEL is not None
+        "models_loaded": BODY_MODEL is not None
     }), 200
 
+@app.route('/outputs/<path:filename>')
+def serve_output(filename):
+    """Serves the generated output images."""
+    return send_from_directory('outputs', filename)
 
-@app.route('/api/v1/predict', methods=['POST'])
+@app.route('/api/v1/analyze', methods=['POST'])
 @require_auth
-def analyze_vin():
+def analyze_vehicle():
     """
-    Analyzes an uploaded VIN image.
+    Analyzes 5 vehicle views.
     ---
     parameters:
       - name: Authorization
@@ -115,46 +121,64 @@ def analyze_vin():
         type: string
         required: true
         description: Bearer token
-      - name: image
+      - name: front
         in: formData
         type: file
         required: true
-        description: Vehicle VIN image file
+      - name: rear
+        in: formData
+        type: file
+        required: true
+      - name: left
+        in: formData
+        type: file
+        required: true
+      - name: right
+        in: formData
+        type: file
+        required: true
+      - name: roof
+        in: formData
+        type: file
+        required: true
     responses:
       200:
-        description: Prediction successful
+        description: Analysis successful
     """
-    # 1. Validate file exists
-    if 'image' not in request.files:
-        abort(400, description="No image part in the request")
-        
-    file = request.files['image']
-    if file.filename == '':
-        abort(400, description="No selected file")
-        
-    # 2. Check extension
-    file_ext = pathlib.Path(file.filename).suffix.lower()
-    if file_ext not in ALLOWED_EXTENSIONS:
-        abort(400, description=f"Unsupported file extension. Allowed: {ALLOWED_EXTENSIONS}")
+    if BODY_MODEL is None:
+        return jsonify({"error": "Model not loaded on server.", "status_code": 500}), 500
+
+    required_views = ['front', 'rear', 'left', 'right', 'roof']
+    views_bytes = {}
+
+    for view in required_views:
+        if view not in request.files:
+            abort(400, description=f"Missing required view: {view}")
+            
+        file = request.files[view]
+        if file.filename == '':
+            abort(400, description=f"No selected file for view: {view}")
+            
+        views_bytes[view] = file.read()
         
     try:
-        contents = file.read()
-        prediction = predict_vin(contents, VIN_MODEL)
+        # Perform inference
+        result = predict_body_condition(BODY_MODEL, views_bytes, conf_threshold=CONF_THRESHOLD)
         
-        result = {
-            "filename": file.filename,
-            "label": prediction["label"],
-            "confidence": prediction["confidence"],
-            "status": "success"
-        }
-            
+        # Add host prefix to visual URLs so they resolve correctly
+        base_url = request.host_url.rstrip('/')
+        for view_name, analysis in result['view_analysis'].items():
+            if 'visual_url' in analysis:
+                analysis['visual_url'] = f"{base_url}{analysis['visual_url']}"
+                
         return jsonify(result), 200
         
+    except ValueError as ve:
+        return jsonify({"error": f"Validation Error: {str(ve)}", "status_code": 400}), 400
     except Exception as e:
         print(f"Error during analysis: {str(e)}")
         return jsonify({"error": f"Analysis failed: {str(e)}", "status_code": 500}), 500
 
 if __name__ == "__main__":
-    # In production, use a WSGI server like Gunicorn or Waitress
     print(f"Starting Flask server on port {PORT}...")
     app.run(host='0.0.0.0', port=PORT, debug=False)
