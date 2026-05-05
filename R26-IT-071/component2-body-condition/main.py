@@ -10,8 +10,8 @@ from PIL import Image
 
 
 app = FastAPI(
-    title="Vehicle Damage Type Classification API",
-    version="2.0.0"
+    title="Hybrid Vehicle Damage Type Classification API",
+    version="3.0.0"
 )
 
 app.add_middleware(
@@ -26,12 +26,26 @@ app.add_middleware(
 # Configuration
 # ---------------------------------------------------------
 
-MODEL_PATH = "vehicle_damage_type_mobilenetv3_best.h5"
+MOBILENET_MODEL_PATH = "vehicle_damage_type_mobilenetv3_best.h5"
+EFFICIENTNET_MODEL_PATH = "efficientnetv2b0_damage_type_best.h5"
+
 IMG_SIZE = (224, 224)
 
 # This must match your training output:
 # Class names: ['dent', 'rust', 'scratch', 'undamaged']
 CLASS_NAMES = ["dent", "rust", "scratch", "undamaged"]
+
+# Best hybrid weights found from validation search
+MOBILENET_WEIGHT = 0.15
+EFFICIENTNET_WEIGHT = 0.85
+
+MODEL_ACCURACY = {
+    "mobilenetv3_test_accuracy": "85.58%",
+    "efficientnetv2b0_test_accuracy": "85.12%",
+    "hybrid_validation_accuracy": "82.54%",
+    "hybrid_test_accuracy": "86.98%",
+    "hybrid_formula": "0.15 * MobileNetV3 + 0.85 * EfficientNetV2B0"
+}
 
 VIEW_WEIGHTS = {
     "front": 0.25,
@@ -48,7 +62,8 @@ DAMAGE_PENALTIES = {
     "rust": 25,
 }
 
-damage_type_model = None
+mobilenet_model = None
+efficientnet_model = None
 
 
 # ---------------------------------------------------------
@@ -57,30 +72,46 @@ damage_type_model = None
 
 @app.on_event("startup")
 def load_model():
-    global damage_type_model
+    global mobilenet_model, efficientnet_model
 
     print("\n==========================================")
-    print("STARTING VEHICLE DAMAGE TYPE API v2.0.0")
+    print("STARTING HYBRID VEHICLE DAMAGE TYPE API v3.0.0")
     print("==========================================")
     print("Current folder:", os.getcwd())
-    print("Expected model:", MODEL_PATH)
-    print("Model exists:", os.path.exists(MODEL_PATH))
+    print("MobileNetV3 model:", MOBILENET_MODEL_PATH)
+    print("MobileNetV3 exists:", os.path.exists(MOBILENET_MODEL_PATH))
+    print("EfficientNetV2B0 model:", EFFICIENTNET_MODEL_PATH)
+    print("EfficientNetV2B0 exists:", os.path.exists(EFFICIENTNET_MODEL_PATH))
 
-    if not os.path.exists(MODEL_PATH):
-        print(f"[WARNING] Model file '{MODEL_PATH}' not found.")
+    if not os.path.exists(MOBILENET_MODEL_PATH):
+        print(f"[WARNING] MobileNetV3 model file '{MOBILENET_MODEL_PATH}' not found.")
         print("[WARNING] Copy vehicle_damage_type_mobilenetv3_best.h5 into this backend folder.")
-        damage_type_model = None
-        return
+        mobilenet_model = None
+    else:
+        try:
+            print(f"[INFO] Loading MobileNetV3 model from: {MOBILENET_MODEL_PATH}")
+            mobilenet_model = tf.keras.models.load_model(MOBILENET_MODEL_PATH, compile=False)
+            print("[INFO] MobileNetV3 model loaded successfully.")
+        except Exception as e:
+            print(f"[ERROR] Failed to load MobileNetV3 model: {e}")
+            mobilenet_model = None
 
-    try:
-        print(f"[INFO] Loading model from: {MODEL_PATH}")
-        damage_type_model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-        print("[INFO] Damage type model loaded successfully.")
-        print("[INFO] Class order:", CLASS_NAMES)
+    if not os.path.exists(EFFICIENTNET_MODEL_PATH):
+        print(f"[WARNING] EfficientNetV2B0 model file '{EFFICIENTNET_MODEL_PATH}' not found.")
+        print("[WARNING] Copy efficientnetv2b0_damage_type_best.h5 into this backend folder.")
+        efficientnet_model = None
+    else:
+        try:
+            print(f"[INFO] Loading EfficientNetV2B0 model from: {EFFICIENTNET_MODEL_PATH}")
+            efficientnet_model = tf.keras.models.load_model(EFFICIENTNET_MODEL_PATH, compile=False)
+            print("[INFO] EfficientNetV2B0 model loaded successfully.")
+        except Exception as e:
+            print(f"[ERROR] Failed to load EfficientNetV2B0 model: {e}")
+            efficientnet_model = None
 
-    except Exception as e:
-        print(f"[ERROR] Failed to load model: {e}")
-        damage_type_model = None
+    print("[INFO] Class order:", CLASS_NAMES)
+    print("[INFO] Hybrid formula:")
+    print(f"       {MOBILENET_WEIGHT} * MobileNetV3 + {EFFICIENTNET_WEIGHT} * EfficientNetV2B0")
 
 
 # ---------------------------------------------------------
@@ -90,11 +121,18 @@ def load_model():
 @app.get("/version")
 def version():
     return {
-        "api_version": "2.0.0",
-        "model_path": MODEL_PATH,
-        "model_exists": os.path.exists(MODEL_PATH),
+        "api_version": "3.0.0",
+        "selected_model": "Hybrid MobileNetV3 + EfficientNetV2B0",
+        "mobilenet_model_path": MOBILENET_MODEL_PATH,
+        "efficientnet_model_path": EFFICIENTNET_MODEL_PATH,
+        "mobilenet_model_exists": os.path.exists(MOBILENET_MODEL_PATH),
+        "efficientnet_model_exists": os.path.exists(EFFICIENTNET_MODEL_PATH),
         "class_names": CLASS_NAMES,
-        "message": "This backend uses dent/rust/scratch/undamaged MobileNetV3 model"
+        "hybrid_weights": {
+            "mobilenetv3": MOBILENET_WEIGHT,
+            "efficientnetv2b0": EFFICIENTNET_WEIGHT
+        },
+        "message": "This backend uses a hybrid model for dent/rust/scratch/undamaged classification"
     }
 
 
@@ -108,6 +146,39 @@ def routes():
     }
 
 
+@app.get("/model-accuracy")
+def model_accuracy():
+    return {
+        "message": "Hybrid model accuracy summary",
+        "selected_model": "Hybrid MobileNetV3 + EfficientNetV2B0",
+        "class_names": CLASS_NAMES,
+        "model_accuracy": MODEL_ACCURACY,
+        "hybrid_weights": {
+            "mobilenetv3": MOBILENET_WEIGHT,
+            "efficientnetv2b0": EFFICIENTNET_WEIGHT
+        },
+        "reason": "The hybrid model achieved the highest test accuracy compared with the individual MobileNetV3 and EfficientNetV2B0 models."
+    }
+
+@app.get("/model-accuracy")
+def model_accuracy():
+    return {
+        "message": "Hybrid model accuracy summary",
+        "selected_model": "Hybrid MobileNetV3 + EfficientNetV2B0",
+        "class_names": CLASS_NAMES,
+        "model_accuracy": {
+            "mobilenetv3_test_accuracy": "85.58%",
+            "efficientnetv2b0_test_accuracy": "85.12%",
+            "hybrid_validation_accuracy": "82.54%",
+            "hybrid_test_accuracy": "86.98%",
+            "hybrid_formula": "0.15 * MobileNetV3 + 0.85 * EfficientNetV2B0"
+        },
+        "hybrid_weights": {
+            "mobilenetv3": 0.15,
+            "efficientnetv2b0": 0.85
+        },
+        "reason": "The hybrid model achieved the highest test accuracy compared with the individual MobileNetV3 and EfficientNetV2B0 models."
+    }
 # ---------------------------------------------------------
 # Home page
 # ---------------------------------------------------------
@@ -121,7 +192,7 @@ async def read_index():
     return """
     <html>
         <body>
-            <h2>Vehicle Damage Type Classification API is running</h2>
+            <h2>Hybrid Vehicle Damage Type Classification API is running</h2>
             <p>Go to <a href="/docs">Swagger Docs</a> to test the API.</p>
         </body>
     </html>
@@ -143,7 +214,7 @@ def preprocess_image(uploaded_file: UploadFile):
         image_array = np.array(image)
 
         # Do NOT divide by 255.
-        # Your MobileNetV3 model was trained with include_preprocessing=True.
+        # Both models were trained with include_preprocessing=True.
         image_array = np.expand_dims(image_array, axis=0)
 
         return image_array
@@ -156,24 +227,36 @@ def preprocess_image(uploaded_file: UploadFile):
 
 
 def classify_damage_type(uploaded_file: UploadFile, view_name: str):
-    global damage_type_model
+    global mobilenet_model, efficientnet_model
 
-    if damage_type_model is None:
+    if mobilenet_model is None:
         raise HTTPException(
             status_code=503,
-            detail=f"Model not loaded. Please place '{MODEL_PATH}' inside the backend folder."
+            detail=f"MobileNetV3 model not loaded. Please place '{MOBILENET_MODEL_PATH}' inside the backend folder."
+        )
+
+    if efficientnet_model is None:
+        raise HTTPException(
+            status_code=503,
+            detail=f"EfficientNetV2B0 model not loaded. Please place '{EFFICIENTNET_MODEL_PATH}' inside the backend folder."
         )
 
     image_array = preprocess_image(uploaded_file)
 
-    predictions = damage_type_model.predict(image_array, verbose=0)[0]
+    mobilenet_probs = mobilenet_model.predict(image_array, verbose=0)[0]
+    efficientnet_probs = efficientnet_model.predict(image_array, verbose=0)[0]
 
-    predicted_index = int(np.argmax(predictions))
+    hybrid_probs = (
+        mobilenet_probs * MOBILENET_WEIGHT +
+        efficientnet_probs * EFFICIENTNET_WEIGHT
+    )
+
+    predicted_index = int(np.argmax(hybrid_probs))
     predicted_class = CLASS_NAMES[predicted_index]
-    confidence = float(predictions[predicted_index]) * 100
+    confidence = float(hybrid_probs[predicted_index]) * 100
 
     probabilities = {
-        CLASS_NAMES[i]: round(float(predictions[i]) * 100, 2)
+        CLASS_NAMES[i]: round(float(hybrid_probs[i]) * 100, 2)
         for i in range(len(CLASS_NAMES))
     }
 
@@ -197,11 +280,13 @@ def classify_damage_type(uploaded_file: UploadFile, view_name: str):
     view_score = max(0, 100 - penalty)
 
     print(f"\n[DEBUG] {view_name.upper()} VIEW")
-    print(f"Predicted class: {predicted_class}")
+    print(f"Hybrid predicted class: {predicted_class}")
     print(f"Status: {status}")
     print(f"Damage type: {damage_type}")
     print(f"Confidence: {confidence:.2f}%")
-    print(f"Probabilities: {probabilities}")
+    print(f"Hybrid probabilities: {probabilities}")
+    print(f"MobileNetV3 raw probabilities: {mobilenet_probs}")
+    print(f"EfficientNetV2B0 raw probabilities: {efficientnet_probs}")
 
     return {
         "view": view_name,
@@ -213,7 +298,12 @@ def classify_damage_type(uploaded_file: UploadFile, view_name: str):
         "undamaged_probability": undamaged_probability,
         "damaged_probability": damaged_probability,
         "probabilities": probabilities,
-        "penalty": penalty
+        "penalty": penalty,
+        "model_used": "Hybrid MobileNetV3 + EfficientNetV2B0",
+        "hybrid_weights": {
+            "mobilenetv3": MOBILENET_WEIGHT,
+            "efficientnetv2b0": EFFICIENTNET_WEIGHT
+        }
     }
 
 
@@ -259,13 +349,16 @@ def build_response(results):
     vehicle_status = "damaged" if len(detected_damage_types) > 0 else "undamaged"
 
     return {
-        "message": "Vehicle damage type classification completed successfully",
+        "message": "Hybrid vehicle damage type classification completed successfully",
+        "selected_model": "Hybrid MobileNetV3 + EfficientNetV2B0",
+        "hybrid_formula": MODEL_ACCURACY["hybrid_formula"],
         "vehicle_status": vehicle_status,
         "detected_damage_types": detected_damage_types,
         "body_condition_score": final_score,
         "final_body_condition_score": final_score,
         "condition": condition_label(final_score),
         "results": results,
+        "model_accuracy": MODEL_ACCURACY,
         "summary": {
             "vehicle_status": vehicle_status,
             "detected_damage_types": detected_damage_types,
