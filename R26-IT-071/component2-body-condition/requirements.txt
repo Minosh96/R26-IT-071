@@ -1,0 +1,9 @@
+ultralytics
+roboflow
+flask
+flask-cors
+python-dotenv
+opencv-python
+python-multipart
+Pillow
+numpy

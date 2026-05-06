@@ -1,0 +1,9 @@
+opencv-python-headless
+numpy
+tensorflow>=2.16.1
+flask
+flask-cors
+python-dotenv
+python-multipart
+scikit-learn
+python-dotenv

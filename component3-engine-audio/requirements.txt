@@ -1,0 +1,12 @@
+flask
+flask-cors
+librosa
+numpy
+scikit-learn
+joblib
+tensorflow
+tensorflow-hub
+matplotlib
+soundfile
+python-dotenv
+setuptools<70
