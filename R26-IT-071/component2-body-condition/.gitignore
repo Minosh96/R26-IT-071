@@ -1,3 +1,16 @@
+<<<<<<< feature/body-condition-Accuracy-increase
+.env
+__pycache__/
+*.pyc
+uploads/
+outputs/
+runs/
+
+# Do not push trained model files unless your team specifically wants them
+*.h5
+*.keras
+*.pt
+=======
 # Python
 __pycache__/
 *.py[cod]
@@ -15,3 +28,4 @@ uploads/
 # OS
 .DS_Store
 Thumbs.db
+>>>>>>> main
