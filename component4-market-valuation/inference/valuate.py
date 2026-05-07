@@ -145,7 +145,7 @@ def generate_explanation(verdict, listed_lkr, fair_value_lkr, engine_result, bod
     
     return explanation
 
-def valuate(vehicle_input, listed_price_million, fault_class="healthy", confidence=1.0, body_score=100, vin_status="original"):
+def valuate(vehicle_input, listed_price_million, fault_class="healthy", confidence=1.0, body_score=100, vin_status="original", preloaded_assets=None):
     """
     Main valuation logic.
     """
@@ -159,7 +159,10 @@ def valuate(vehicle_input, listed_price_million, fault_class="healthy", confiden
         }
         
     # Step 2 — Load all models
-    model, scaler, features, repair_costs = load_all()
+    if preloaded_assets:
+        model, scaler, features, repair_costs = preloaded_assets
+    else:
+        model, scaler, features, repair_costs = load_all()
     
     # Step 3 — Predict base price
     predicted_million, predicted_lkr = predict_base_price(model, scaler, features, vehicle_input)
