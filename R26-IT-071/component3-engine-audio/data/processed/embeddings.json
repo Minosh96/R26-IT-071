@@ -1,8 +1,0 @@
-{
-    "healthy": 0,
-    "knocking": 1,
-    "misfiring": 2,
-    "tappet": 3,
-    "rotational_imbalance": 4,
-    "battery_fault": 5
-}
