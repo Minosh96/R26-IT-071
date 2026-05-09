@@ -6,6 +6,7 @@ import '../../constants/app_colors.dart';
 import '../../widgets/inspection_app_bar.dart';
 import '../../widgets/progress_stepper.dart';
 import '../../services/auth_service.dart';
+import '../../services/api_service.dart';
 
 class VinScanScreen extends StatefulWidget {
   const VinScanScreen({super.key});
@@ -23,6 +24,8 @@ class _VinScanScreenState extends State<VinScanScreen> {
   String? _scannedValue;
   String? _capturedImagePath;
   String? _profilePicPath;
+  Map<String, dynamic>? _vinResult;
+  final ApiService _apiService = ApiService();
   final MobileScannerController _scannerController = MobileScannerController();
   final AuthService _authService = AuthService();
 
@@ -76,34 +79,130 @@ class _VinScanScreenState extends State<VinScanScreen> {
   }
 
   Future<void> _handleAnalyze() async {
-    if (_capturedImagePath == null && _scannedValue == null) {
+    if (_capturedImagePath == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please scan or upload VIN/Engine number image")),
+        const SnackBar(content: Text('Please capture or upload VIN image')),
       );
       return;
     }
 
+    setState(() => _isAnalyzing = true);
+
+    final result = await _apiService.scanVin(File(_capturedImagePath!));
+
     setState(() {
-      _isAnalyzing = true;
+      _vinResult = result;
+      _isAnalyzing = false;
     });
 
-    // Simulate analysis delay
-    await Future.delayed(const Duration(seconds: 2));
+    if (result['status'] == 'error') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Analysis failed: ${result["message"]}'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } else {
+      _showVinResult(result);
+    }
+  }
 
-    if (!mounted) return;
+  void _showVinResult(Map<String, dynamic> result) {
+    final prediction =
+        (result['prediction'] ?? 'unknown').toString().toLowerCase();
+    final confidence = (result['confidence'] ?? 0.0) as double;
 
-    Navigator.pushNamed(
-      context,
-      '/inspection/results',
-      arguments: {
-        ..._vehicleData,
-        'body_images': _bodyImages,
-        'vin_image': _capturedImagePath,
-        'vin_status': _scannedValue != null ? 'original' : 'unknown',
-        'body_score': 80.0, // placeholder
-        'fault_class': _vehicleData['fault_class'] ?? 'healthy',
-        'confidence': _vehicleData['confidence'] ?? 1.0,
-      },
+    IconData icon;
+    Color color;
+    String statusText;
+    String? warning;
+
+    if (prediction == 'original') {
+      icon = Icons.check_circle;
+      color = AppColors.statusGreen;
+      statusText = "VIN ORIGINAL";
+    } else if (prediction == 'altered') {
+      icon = Icons.warning;
+      color = AppColors.statusRed;
+      statusText = "VIN ALTERED";
+      warning = "Do not purchase this vehicle. The VIN has been tampered with.";
+    } else {
+      icon = Icons.help_outline;
+      color = AppColors.statusAmber;
+      statusText = "NEEDS REVIEW";
+    }
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A2035),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: color, size: 64),
+            const SizedBox(height: 16),
+            Text(
+              statusText,
+              style: TextStyle(
+                  color: color, fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Confidence: ${(confidence * 100).toStringAsFixed(1)}%',
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            if (warning != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: color.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  warning,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: color, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2E7D32),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: () {
+                  Navigator.pop(context); // close bottom sheet
+                  Navigator.pushNamed(
+                    context,
+                    '/inspection/results',
+                    arguments: {
+                      ..._vehicleData,
+                      'vin_status': prediction,
+                      'vin_image': _capturedImagePath,
+                      'body_score': _vehicleData['body_score'],
+                      'mhs_score': _vehicleData['mhs_score'],
+                      'fault_class': _vehicleData['fault_class'],
+                    },
+                  );
+                },
+                child: const Text('View Full Inspection Report',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
