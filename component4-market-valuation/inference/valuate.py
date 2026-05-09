@@ -6,22 +6,19 @@ import os
 from pathlib import Path
 
 # Configuration
-MODEL_PATH = "models/saved/price_model.joblib"
-SCALER_PATH = "models/saved/price_scaler.joblib"
-FEATURE_NAMES_PATH = "models/saved/feature_names.json"
+MODEL_PATH = "models/saved/advanced_best_model.joblib"
+FEATURE_NAMES_PATH = "models/saved/advanced_feature_names.json"
 REPAIR_COSTS_PATH = "data/repair_costs.json"
 CURRENT_YEAR = 2026
 
 def load_all():
     """
-    Load price_model.joblib, price_scaler.joblib, feature_names.json, and repair_costs.json.
+    Load advanced_best_model.joblib, feature_names.json, and repair_costs.json.
     """
     try:
+        # Note: model is now a Pipeline that includes preprocessing
         model = joblib.load(MODEL_PATH)
-        print(f"Loaded model from {MODEL_PATH}")
-        
-        scaler = joblib.load(SCALER_PATH)
-        print(f"Loaded scaler from {SCALER_PATH}")
+        print(f"Loaded pipeline from {MODEL_PATH}")
         
         with open(FEATURE_NAMES_PATH, 'r') as f:
             features = json.load(f)
@@ -31,37 +28,50 @@ def load_all():
             repair_costs = json.load(f)
         print(f"Loaded repair costs from {REPAIR_COSTS_PATH}")
         
-        return model, scaler, features, repair_costs
+        # We return None for scaler since it's built into the pipeline
+        return model, None, features, repair_costs
     except FileNotFoundError as e:
         raise FileNotFoundError(f"Required file missing for valuation engine: {e.filename}. Please run training script first.")
 
-def predict_base_price(model, scaler, features, vehicle_input):
+def predict_base_price(model, features, vehicle_input, fault_class, confidence, body_score):
     """
-    Predict price based on vehicle characteristics.
+    Predict holistic price based on vehicle characteristics AND component outputs.
     """
     maf_year = vehicle_input['maf_year']
     reg_year = vehicle_input['reg_year']
     
     vehicle_age = CURRENT_YEAR - maf_year
     reg_gap = max(0, reg_year - maf_year)
+    mileage_km = vehicle_input['mileage_km']
+    previous_owners = vehicle_input['previous_owners']
+    
+    # Derived features
+    mileage_per_year = mileage_km / (vehicle_age + 1)
+    log_mileage_km = np.log1p(mileage_km)
+    log_vehicle_age = np.log1p(vehicle_age)
     
     # Construct input data in same order as FEATURES
     data = {
         'maf_year': [maf_year],
         'vehicle_age': [vehicle_age],
-        'mileage_km': [vehicle_input['mileage_km']],
-        'previous_owners': [vehicle_input['previous_owners']],
+        'mileage_km': [mileage_km],
+        'previous_owners': [previous_owners],
         'is_reconditioned': [vehicle_input['is_reconditioned']],
         'power_shutters': [vehicle_input['power_shutters']],
         'power_mirrors': [vehicle_input['power_mirrors']],
-        'reg_gap': [reg_gap]
+        'reg_gap': [reg_gap],
+        'fault_class': [fault_class],
+        'confidence': [confidence],
+        'body_score': [body_score],
+        'mileage_per_year': [mileage_per_year],
+        'log_mileage_km': [log_mileage_km],
+        'log_vehicle_age': [log_vehicle_age]
     }
     
     df = pd.DataFrame(data, columns=features)
     
-    # Scale and predict
-    scaled_data = scaler.transform(df)
-    predicted_million = float(model.predict(scaled_data)[0])
+    # Predict using the Pipeline (handles OneHotEncoding & Scaling automatically)
+    predicted_million = float(model.predict(df)[0])
     predicted_million = round(predicted_million, 3)
     predicted_lkr = int(predicted_million * 1_000_000)
     
@@ -69,7 +79,7 @@ def predict_base_price(model, scaler, features, vehicle_input):
 
 def get_engine_deduction(fault_class, confidence, repair_costs):
     """
-    Look up engine fault in repair_costs and calculate deduction.
+    Look up engine fault in repair_costs to provide explanation text.
     """
     faults = repair_costs.get("engine_faults", {})
     fault_data = faults.get(fault_class, faults.get("healthy"))
@@ -91,7 +101,7 @@ def get_engine_deduction(fault_class, confidence, repair_costs):
 
 def get_body_deduction(body_score, repair_costs):
     """
-    Map body score to damage category and calculate deduction.
+    Map body score to damage category to provide explanation text.
     """
     if body_score >= 80:
         category = "none"
@@ -145,7 +155,7 @@ def generate_explanation(verdict, listed_lkr, fair_value_lkr, engine_result, bod
     
     return explanation
 
-def valuate(vehicle_input, listed_price_million, fault_class="healthy", confidence=1.0, body_score=100, vin_status="original"):
+def valuate(vehicle_input, listed_price_million, fault_class="healthy", confidence=1.0, body_score=100, vin_status="original", preloaded_assets=None):
     """
     Main valuation logic.
     """
@@ -159,26 +169,30 @@ def valuate(vehicle_input, listed_price_million, fault_class="healthy", confiden
         }
         
     # Step 2 — Load all models
-    model, scaler, features, repair_costs = load_all()
+    if preloaded_assets:
+        model, _, features, repair_costs = preloaded_assets
+    else:
+        model, _, features, repair_costs = load_all()
     
-    # Step 3 — Predict base price
-    predicted_million, predicted_lkr = predict_base_price(model, scaler, features, vehicle_input)
+    # Step 3 — Predict holistic price
+    predicted_million, predicted_lkr = predict_base_price(model, features, vehicle_input, fault_class, confidence, body_score)
     
-    # Step 4 — Get engine deduction
+    # Step 4 — Get engine info for explanations
     engine_result = get_engine_deduction(fault_class, confidence, repair_costs)
     
-    # Step 5 — Get body deduction
+    # Step 5 — Get body info for explanations
     body_result = get_body_deduction(body_score, repair_costs)
     
     # Step 6 — Calculate all values
     listed_lkr = int(listed_price_million * 1_000_000)
-    fair_value_lkr = int(predicted_lkr - engine_result["deduction_lkr"] - body_result["deduction_lkr"])
-    fair_value_lkr = max(500_000, fair_value_lkr)
+    
+    # The AI model inherently calculates the depreciation now, so fair value = predicted value!
+    fair_value_lkr = max(500_000, predicted_lkr)
     
     price_difference_lkr = listed_lkr - fair_value_lkr
     
-    negotiation_min_lkr = int(predicted_lkr - engine_result["repair_max_lkr"] - body_result["repair_max_lkr"])
-    negotiation_max_lkr = int(predicted_lkr - engine_result["repair_min_lkr"] - body_result["repair_min_lkr"])
+    negotiation_min_lkr = int(fair_value_lkr - (engine_result["repair_max_lkr"] - engine_result["deduction_lkr"]) - (body_result["repair_max_lkr"] - body_result["deduction_lkr"]))
+    negotiation_max_lkr = int(fair_value_lkr - (engine_result["repair_min_lkr"] - engine_result["deduction_lkr"]) - (body_result["repair_min_lkr"] - body_result["deduction_lkr"]))
     
     negotiation_min_lkr = max(500_000, negotiation_min_lkr)
     negotiation_max_lkr = max(500_000, negotiation_max_lkr)
@@ -197,7 +211,6 @@ def valuate(vehicle_input, listed_price_million, fault_class="healthy", confiden
         verdict_message = "This vehicle is listed at approximately fair market value."
         
     # For good deals, buyer should just pay listed price
-    # Recommending higher than listed makes no sense
     if verdict == "GOOD_DEAL":
         recommended_offer_lkr = listed_lkr
         negotiation_min_lkr = listed_lkr
