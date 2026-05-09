@@ -10,6 +10,7 @@ import '../../widgets/progress_stepper.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/custom_toast.dart';
 import '../../services/api_service.dart';
+import '../../widgets/loading_overlay.dart';
 
 class AudioRecordingScreen extends StatefulWidget {
   const AudioRecordingScreen({super.key});
@@ -384,302 +385,306 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
         userName: _userName,
         userPhotoUrl: _profilePicPath,
       ),
-      body: Column(
-        children: [
-          Container(
-            height: 75,
-            width: double.infinity,
-            color: AppColors.lightBlueTop,
-            alignment: Alignment.center,
-            child: const ProgressStepper(currentStep: 1),
-          ),
-          
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  // Recording Card
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A2035),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: AppColors.darkNavyBg,
-                          ),
-                          child: Icon(
-                            Icons.mic,
-                            color: _isRecording ? AppColors.statusRed : Colors.white,
-                            size: 28,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _formatDuration(_recordingDuration),
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                            fontFamily: 'monospace',
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        
-                        // Waveform
-                        Container(
-                          height: 60,
-                          width: double.infinity,
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF0D1117),
-                            borderRadius: BorderRadius.circular(30),
-                          ),
-                          child: _isRecording 
-                            ? AnimatedBuilder(
-                                animation: _waveController,
-                                builder: (context, child) {
-                                  return CustomPaint(
-                                    painter: WaveformPainter(animationValue: _waveController.value),
-                                  );
-                                },
-                              )
-                            : _recordingPath.isNotEmpty
-                                ? Center(
-                                    child: Row(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        IconButton(
-                                          icon: Icon(_isPlaying ? Icons.stop : Icons.play_arrow, color: Colors.white),
-                                          onPressed: _playRecording,
-                                        ),
-                                        const Text("Listen to recording", style: TextStyle(color: Colors.white, fontSize: 14)),
-                                      ],
-                                    ),
-                                  )
-                                : const Center(
-                                    child: Text(
-                                      "Tap Start to record",
-                                      style: TextStyle(color: AppColors.textGray, fontSize: 12),
-                                    ),
-                                  ),
-                        ),
-                        const SizedBox(height: 12),
-                        
-                        // Controls
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                          children: [
-                            OutlinedButton(
-                              onPressed: _resetRecording,
-                              style: OutlinedButton.styleFrom(
-                                side: BorderSide(color: _recordingPath.isNotEmpty ? AppColors.statusRed : AppColors.textGray),
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(_recordingPath.isNotEmpty ? Icons.delete_outline : Icons.refresh, 
-                                      size: 14, color: _recordingPath.isNotEmpty ? AppColors.statusRed : AppColors.textGray),
-                                  const SizedBox(width: 4),
-                                  Text(_recordingPath.isNotEmpty ? "Discard" : "Reset", 
-                                      style: TextStyle(color: _recordingPath.isNotEmpty ? AppColors.statusRed : AppColors.textGray)),
-                                ],
-                              ),
+      body: LoadingOverlay(
+        isLoading: _isAnalyzing,
+        message: 'Analyzing engine audio...',
+        child: Column(
+          children: [
+            Container(
+              height: 75,
+              width: double.infinity,
+              color: AppColors.lightBlueTop,
+              alignment: Alignment.center,
+              child: const ProgressStepper(currentStep: 1),
+            ),
+            
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    // Recording Card
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1A2035),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: AppColors.darkNavyBg,
                             ),
-                            
-                            if (!_isRecording && !_isPaused)
-                              ElevatedButton(
-                                onPressed: _recordingPath.isNotEmpty ? _handleNext : _startRecording,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: _recordingPath.isNotEmpty ? const Color(0xFF2E7D32) : AppColors.primaryBlue,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                                ),
-                                child: Text(
-                                  _recordingPath.isNotEmpty ? "Confirm & Next" : "Start", 
-                                  style: const TextStyle(color: Colors.white)
-                                ),
-                              ),
-                              
-                            if (_isRecording)
+                            child: Icon(
+                              Icons.mic,
+                              color: _isRecording ? AppColors.statusRed : Colors.white,
+                              size: 28,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _formatDuration(_recordingDuration),
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          
+                          // Waveform
+                          Container(
+                            height: 60,
+                            width: double.infinity,
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF0D1117),
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+                            child: _isRecording 
+                              ? AnimatedBuilder(
+                                  animation: _waveController,
+                                  builder: (context, child) {
+                                    return CustomPaint(
+                                      painter: WaveformPainter(animationValue: _waveController.value),
+                                    );
+                                  },
+                                )
+                              : _recordingPath.isNotEmpty
+                                  ? Center(
+                                      child: Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          IconButton(
+                                            icon: Icon(_isPlaying ? Icons.stop : Icons.play_arrow, color: Colors.white),
+                                            onPressed: _playRecording,
+                                          ),
+                                          const Text("Listen to recording", style: TextStyle(color: Colors.white, fontSize: 14)),
+                                        ],
+                                      ),
+                                    )
+                                  : const Center(
+                                      child: Text(
+                                        "Tap Start to record",
+                                        style: TextStyle(color: AppColors.textGray, fontSize: 12),
+                                      ),
+                                    ),
+                          ),
+                          const SizedBox(height: 12),
+                          
+                          // Controls
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                            children: [
                               OutlinedButton(
-                                onPressed: _pauseRecording,
+                                onPressed: _resetRecording,
                                 style: OutlinedButton.styleFrom(
-                                  side: const BorderSide(color: Colors.white),
+                                  side: BorderSide(color: _recordingPath.isNotEmpty ? AppColors.statusRed : AppColors.textGray),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
                                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                                 ),
-                                child: const Row(
+                                child: Row(
                                   children: [
-                                    Icon(Icons.pause, size: 14, color: Colors.white),
-                                    SizedBox(width: 4),
-                                    Text("Pause", style: TextStyle(color: Colors.white)),
+                                    Icon(_recordingPath.isNotEmpty ? Icons.delete_outline : Icons.refresh, 
+                                        size: 14, color: _recordingPath.isNotEmpty ? AppColors.statusRed : AppColors.textGray),
+                                    const SizedBox(width: 4),
+                                    Text(_recordingPath.isNotEmpty ? "Discard" : "Reset", 
+                                        style: TextStyle(color: _recordingPath.isNotEmpty ? AppColors.statusRed : AppColors.textGray)),
                                   ],
                                 ),
                               ),
                               
-                            if (_isPaused) ...[
-                              ElevatedButton(
-                                onPressed: _resumeRecording,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppColors.primaryBlue,
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              if (!_isRecording && !_isPaused)
+                                ElevatedButton(
+                                  onPressed: _recordingPath.isNotEmpty ? _handleNext : _startRecording,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _recordingPath.isNotEmpty ? const Color(0xFF2E7D32) : AppColors.primaryBlue,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                                  ),
+                                  child: Text(
+                                    _recordingPath.isNotEmpty ? "Confirm & Next" : "Start", 
+                                    style: const TextStyle(color: Colors.white)
+                                  ),
                                 ),
-                                child: const Text("Resume", style: TextStyle(color: Colors.white)),
-                              ),
-                              ElevatedButton(
-                                onPressed: _stopRecording,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFB71C1C),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                
+                              if (_isRecording)
+                                OutlinedButton(
+                                  onPressed: _pauseRecording,
+                                  style: OutlinedButton.styleFrom(
+                                    side: const BorderSide(color: Colors.white),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  ),
+                                  child: const Row(
+                                    children: [
+                                      Icon(Icons.pause, size: 14, color: Colors.white),
+                                      SizedBox(width: 4),
+                                      Text("Pause", style: TextStyle(color: Colors.white)),
+                                    ],
+                                  ),
                                 ),
-                                child: Row(
+                                
+                              if (_isPaused) ...[
+                                ElevatedButton(
+                                  onPressed: _resumeRecording,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primaryBlue,
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  ),
+                                  child: const Text("Resume", style: TextStyle(color: Colors.white)),
+                                ),
+                                ElevatedButton(
+                                  onPressed: _stopRecording,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFFB71C1C),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      const Text("Stop", style: TextStyle(color: Colors.white)),
+                                    ],
+                                  ),
+                                ),
+                              ] else if (_isRecording)
+                                ElevatedButton(
+                                  onPressed: _stopRecording,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFFB71C1C),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      const Text("Stop", style: TextStyle(color: Colors.white)),
+                                    ],
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    
+                    const SizedBox(height: 16),
+                    
+                    // Phases
+                    ...List.generate(_phases.length, (index) {
+                      final phase = _phases[index];
+                      final status = _phaseStatus[phase['key']];
+                      return GestureDetector(
+                        onTap: () => _switchPhase(phase['key']),
+                        child: Container(
+                          margin: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1A2035),
+                            borderRadius: BorderRadius.circular(10),
+                            border: _activePhaseKey == phase['key'] 
+                                ? Border.all(color: AppColors.primaryBlue, width: 1) 
+                                : null,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                                    RichText(
+                                      text: TextSpan(
+                                        children: [
+                                          TextSpan(
+                                            text: phase['title'],
+                                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                          ),
+                                          TextSpan(
+                                            text: " - ${phase['subtitle']}",
+                                            style: const TextStyle(color: AppColors.textGray, fontSize: 13),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                    const SizedBox(width: 6),
-                                    const Text("Stop", style: TextStyle(color: Colors.white)),
                                   ],
                                 ),
                               ),
-                            ] else if (_isRecording)
-                              ElevatedButton(
-                                onPressed: _stopRecording,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFB71C1C),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                              if (status == 'done')
+                                const Text("Done", style: TextStyle(color: AppColors.statusGreen, fontSize: 13, fontWeight: FontWeight.bold))
+                              else if (status == 'recording')
+                                Text(
+                                  "${_getRemainingSeconds(phase['key'])} sec",
+                                  style: const TextStyle(color: AppColors.statusAmber, fontSize: 13),
                                 ),
-                                child: Row(
-                                  children: [
-                                    Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                                    ),
-                                    const SizedBox(width: 6),
-                                    const Text("Stop", style: TextStyle(color: Colors.white)),
-                                  ],
-                                ),
-                              ),
-                          ],
+                            ],
+                          ),
+                        ),
+                      );
+                    }),
+                    
+                    const SizedBox(height: 16),
+                    
+                    // Tips
+                    Row(
+                      children: [
+                        _buildTipCard(Icons.menu_open, "Bonnet open", "for best pickup"),
+                        const SizedBox(width: 8),
+                        _buildTipCard(Icons.social_distance, "10 cm away", "from the engine"),
+                        const SizedBox(width: 8),
+                        _buildTipCard(Icons.back_hand, "Steady hand", "reduce vibration"),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 24),
+                    
+                    // Bottom Nav
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1A1A2E),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                          ),
+                          child: const Text("Back", style: TextStyle(color: Colors.white)),
+                        ),
+                        ElevatedButton(
+                          onPressed: _handleNext,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2E7D32),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                          ),
+                          child: const Text("Next", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
-                  ),
-                  
-                  const SizedBox(height: 16),
-                  
-                  // Phases
-                  ...List.generate(_phases.length, (index) {
-                    final phase = _phases[index];
-                    final status = _phaseStatus[phase['key']];
-                    return GestureDetector(
-                      onTap: () => _switchPhase(phase['key']),
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1A2035),
-                          borderRadius: BorderRadius.circular(10),
-                          border: _activePhaseKey == phase['key'] 
-                              ? Border.all(color: AppColors.primaryBlue, width: 1) 
-                              : null,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  RichText(
-                                    text: TextSpan(
-                                      children: [
-                                        TextSpan(
-                                          text: phase['title'],
-                                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
-                                        ),
-                                        TextSpan(
-                                          text: " - ${phase['subtitle']}",
-                                          style: const TextStyle(color: AppColors.textGray, fontSize: 13),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (status == 'done')
-                              const Text("Done", style: TextStyle(color: AppColors.statusGreen, fontSize: 13, fontWeight: FontWeight.bold))
-                            else if (status == 'recording')
-                              Text(
-                                "${_getRemainingSeconds(phase['key'])} sec",
-                                style: const TextStyle(color: AppColors.statusAmber, fontSize: 13),
-                              ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
-                  
-                  const SizedBox(height: 16),
-                  
-                  // Tips
-                  Row(
-                    children: [
-                      _buildTipCard(Icons.menu_open, "Bonnet open", "for best pickup"),
-                      const SizedBox(width: 8),
-                      _buildTipCard(Icons.social_distance, "10 cm away", "from the engine"),
-                      const SizedBox(width: 8),
-                      _buildTipCard(Icons.back_hand, "Steady hand", "reduce vibration"),
-                    ],
-                  ),
-                  
-                  const SizedBox(height: 24),
-                  
-                  // Bottom Nav
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      ElevatedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1A1A2E),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                        ),
-                        child: const Text("Back", style: TextStyle(color: Colors.white)),
-                      ),
-                      ElevatedButton(
-                        onPressed: _handleNext,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2E7D32),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                        ),
-                        child: const Text("Next", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                ],
+                    const SizedBox(height: 20),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
