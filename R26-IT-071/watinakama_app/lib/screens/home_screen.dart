@@ -6,6 +6,7 @@ import '../widgets/wave_header.dart';
 import '../widgets/custom_button.dart';
 import '../services/auth_service.dart';
 import '../widgets/custom_toast.dart';
+import '../services/api_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -19,6 +20,13 @@ class _HomeScreenState extends State<HomeScreen> {
   String _userName = "User";
   String? _profilePicPath;
   DateTime? _lastPressedAt;
+  final ApiService _apiService = ApiService();
+  Map<String, bool> _apiStatus = {
+    'engine': false,
+    'body': false,
+    'vin': false,
+    'valuation': false,
+  };
 
   final List<Map<String, String>> _inspections = [
     {"model": "Suzuki Alto", "date": "2026-04-15", "reg": "WP CAA 4512"},
@@ -30,6 +38,24 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadUserName();
+    _checkApiStatus();
+  }
+
+  _checkApiStatus() async {
+    final engine = await _apiService.checkHealth(ApiConfig.engineApi);
+    final body = await _apiService.checkHealth(ApiConfig.bodyApi);
+    final vin = await _apiService.checkHealth(ApiConfig.vinApi);
+    final valuation = await _apiService.checkHealth(ApiConfig.valuationApi);
+    if (mounted) {
+      setState(() {
+        _apiStatus = {
+          'engine': engine,
+          'body': body,
+          'vin': vin,
+          'valuation': valuation,
+        };
+      });
+    }
   }
 
   Future<void> _loadUserName() async {
@@ -191,6 +217,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
             ),
+
+            // API Status Row
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _statusDot('Engine', _apiStatus['engine']!),
+                  _statusDot('Body', _apiStatus['body']!),
+                  _statusDot('VIN', _apiStatus['vin']!),
+                  _statusDot('Valuation', _apiStatus['valuation']!),
+                ],
+              ),
+            ),
             
             // Inspection Heading
             const Padding(
@@ -289,6 +329,24 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
     ),
+    );
+  }
+
+  Widget _statusDot(String label, bool isOnline) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isOnline ? const Color(0xFF00E676) : const Color(0xFFFF1744),
+          ),
+        ),
+        const SizedBox(width: 4),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 10)),
+      ],
     );
   }
 }
