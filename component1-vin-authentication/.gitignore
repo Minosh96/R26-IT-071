@@ -1,0 +1,32 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment files
+.env
+.venv/
+venv/
+vinenv/
+ENV/
+env/
+
+# Dataset folders
+data/
+
+# Trained model files
+*.keras
+*.h5
+*.pkl
+*.pth
+*.joblib
+
+# Images & archives
+*.zip
+*.jpg
+*.jpeg
+*.png
+
+# OS files
+.DS_Store
+Thumbs.db
