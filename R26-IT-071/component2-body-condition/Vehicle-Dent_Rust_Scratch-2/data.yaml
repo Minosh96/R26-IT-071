@@ -1,0 +1,14 @@
+names:
+- Dent
+- Rust
+- Scratch
+nc: 3
+roboflow:
+  license: Private
+  project: vehicle-dent_rust_scratch
+  url: https://app.roboflow.com/minoshs-workspace-vqmme/vehicle-dent_rust_scratch/2
+  version: 2
+  workspace: minoshs-workspace-vqmme
+test: ../test/images
+train: ../train/images
+val: ../valid/images
