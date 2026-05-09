@@ -1,0 +1,283 @@
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vehicle Body Condition Analysis</title>
+
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: rgb(15, 33, 27);
+            margin: 0;
+            padding: 20px;
+            color: #f5f5f5;
+        }
+
+        .container {
+            max-width: 850px;
+            margin: auto;
+            background: #151918;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+        }
+
+        h1 {
+            text-align: center;
+            color: #e8d8c3;
+        }
+
+        p {
+            color: #ffffff;
+        }
+
+        form {
+            display: grid;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .file-input {
+            display: flex;
+            flex-direction: column;
+        }
+
+        label {
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #d8c7b4;
+        }
+
+        input[type="file"] {
+            padding: 10px;
+            border: 1px solid #444;
+            border-radius: 5px;
+            background: #111;
+            color: white;
+        }
+
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 15px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background-color: #0056b3;
+        }
+
+        #results {
+            margin-top: 20px;
+            display: none;
+        }
+
+        .score-box {
+            background: #222826;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            margin-bottom: 20px;
+            border: 1px solid #333;
+        }
+
+        .score-box h2 {
+            margin: 0;
+            font-size: 2.8em;
+            color: #28a745;
+        }
+
+        .view-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .view-item {
+            background: #1f2422;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 5px solid #007bff;
+            border-radius: 4px;
+        }
+
+        .probability {
+            font-weight: bold;
+            color: #ffc107;
+        }
+
+        .loader {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+            font-weight: bold;
+            color: #007bff;
+        }
+
+        .error {
+            display: none;
+            background: #3a1f1f;
+            color: #ffb3b3;
+            padding: 12px;
+            border-radius: 5px;
+            margin-top: 15px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Vehicle Body Condition Analysis</h1>
+        <p>Upload 5 views of the vehicle to calculate the body condition score.</p>
+
+        <form id="uploadForm">
+            <div class="file-input">
+                <label for="front">Front View:</label>
+                <input type="file" id="front" accept="image/*" required>
+            </div>
+
+            <div class="file-input">
+                <label for="rear">Rear View:</label>
+                <input type="file" id="rear" accept="image/*" required>
+            </div>
+
+            <div class="file-input">
+                <label for="left">Left View:</label>
+                <input type="file" id="left" accept="image/*" required>
+            </div>
+
+            <div class="file-input">
+                <label for="right">Right View:</label>
+                <input type="file" id="right" accept="image/*" required>
+            </div>
+
+            <div class="file-input">
+                <label for="roof">Roof / Up View:</label>
+                <input type="file" id="roof" accept="image/*" required>
+            </div>
+
+            <button type="submit">Analyze Vehicle</button>
+        </form>
+
+        <div class="loader" id="loader">Analyzing images... Please wait.</div>
+
+        <div class="error" id="errorBox"></div>
+
+        <div id="results">
+            <div class="score-box">
+                <p>Overall Body Condition Score</p>
+                <h2 id="finalScore">--</h2>
+                <p id="statusSummary">--</p>
+            </div>
+
+            <h3>View-wise Results:</h3>
+            <ul class="view-list" id="viewList"></ul>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', async function (e) {
+            e.preventDefault();
+
+            const frontFile = document.getElementById('front').files[0];
+            const rearFile = document.getElementById('rear').files[0];
+            const leftFile = document.getElementById('left').files[0];
+            const rightFile = document.getElementById('right').files[0];
+            const roofFile = document.getElementById('roof').files[0];
+
+            const formData = new FormData();
+
+            formData.append('front', frontFile);
+            formData.append('rear', rearFile);
+            formData.append('left', leftFile);
+            formData.append('right', rightFile);
+
+            // Backend expects the roof/top image as "up"
+            formData.append('up', roofFile);
+
+            document.getElementById('loader').style.display = 'block';
+            document.getElementById('results').style.display = 'none';
+            document.getElementById('errorBox').style.display = 'none';
+            document.getElementById('viewList').innerHTML = '';
+
+            try {
+                const response = await fetch('/predict-body-score', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                console.log("API Response:", data);
+
+                if (!response.ok) {
+                    throw new Error(data.detail || 'Prediction failed.');
+                }
+
+                document.getElementById('finalScore').innerText =
+                    data.final_body_condition_score + "/100";
+
+                document.getElementById('statusSummary').innerText =
+                    "Condition: " + data.condition;
+
+                document.getElementById('viewList').innerHTML = `
+                <li class="view-item">
+                    <strong>Front View:</strong><br>
+                    View Score: <span class="probability">${data.results.front.view_score}/100</span><br>
+                    Undamaged Probability: <span class="probability">${data.results.front.undamaged_probability}%</span><br>
+                    Damaged Probability: <span class="probability">${data.results.front.damaged_probability}%</span>
+                </li>
+
+                <li class="view-item">
+                    <strong>Rear View:</strong><br>
+                    View Score: <span class="probability">${data.results.rear.view_score}/100</span><br>
+                    Undamaged Probability: <span class="probability">${data.results.rear.undamaged_probability}%</span><br>
+                    Damaged Probability: <span class="probability">${data.results.rear.damaged_probability}%</span>
+                </li>
+
+                <li class="view-item">
+                    <strong>Left View:</strong><br>
+                    View Score: <span class="probability">${data.results.left.view_score}/100</span><br>
+                    Undamaged Probability: <span class="probability">${data.results.left.undamaged_probability}%</span><br>
+                    Damaged Probability: <span class="probability">${data.results.left.damaged_probability}%</span>
+                </li>
+
+                <li class="view-item">
+                    <strong>Right View:</strong><br>
+                    View Score: <span class="probability">${data.results.right.view_score}/100</span><br>
+                    Undamaged Probability: <span class="probability">${data.results.right.undamaged_probability}%</span><br>
+                    Damaged Probability: <span class="probability">${data.results.right.damaged_probability}%</span>
+                </li>
+
+                <li class="view-item">
+                    <strong>Roof / Up View:</strong><br>
+                    View Score: <span class="probability">${data.results.up.view_score}/100</span><br>
+                    Undamaged Probability: <span class="probability">${data.results.up.undamaged_probability}%</span><br>
+                    Damaged Probability: <span class="probability">${data.results.up.damaged_probability}%</span>
+                </li>
+            `;
+
+                document.getElementById('results').style.display = 'block';
+
+            } catch (error) {
+                console.error(error);
+
+                document.getElementById('errorBox').innerText =
+                    "Error: " + error.message;
+
+                document.getElementById('errorBox').style.display = 'block';
+
+            } finally {
+                document.getElementById('loader').style.display = 'none';
+            }
+        });
+    </script>
+</body>
+
+</html>

@@ -1,17 +1,32 @@
+# Python cache
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Environment files
 .env
-.venv
-env/
+.venv/
 venv/
+vinenv/
 ENV/
-data/clean_vin/*
-!data/clean_vin/.gitkeep
-data/tampered_vin/*
-!data/tampered_vin/.gitkeep
-data/test/*
-!data/test/.gitkeep
-models/*.pkl
-models/*.h5
-models/*.pth
+env/
+
+# Dataset folders
+data/
+
+# Trained model files
+*.keras
+*.h5
+*.pkl
+*.pth
+*.joblib
+
+# Images & archives
+*.zip
+*.jpg
+*.jpeg
+*.png
+
+# OS files
+.DS_Store
+Thumbs.db

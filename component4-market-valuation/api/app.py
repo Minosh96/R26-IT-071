@@ -11,6 +11,7 @@ from functools import wraps
 from flask import Flask, request, jsonify, abort
 from flask_cors import CORS
 from dotenv import load_dotenv
+from flasgger import Swagger
 
 # Ensure the project root is in the python path so we can import inference
 project_root = str(pathlib.Path(__file__).parent.parent.absolute())
@@ -29,6 +30,7 @@ PORT = int(os.getenv("FLASK_PORT", 5004))
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)  # Enable Cross-Origin Resource Sharing
+Swagger(app) # Initialize Swagger UI
 
 # --- Global Model Variables ---
 # Load all models once at startup to prevent latency on every request
@@ -87,7 +89,13 @@ def internal_error(error):
 
 @app.route('/api/v1/health', methods=['GET'])
 def health_check():
-    """Public health check endpoint."""
+    """
+    Public health check endpoint.
+    ---
+    responses:
+      200:
+        description: Service is healthy
+    """
     return jsonify({
         "status": "ok",
         "service": "market-valuation-api",
@@ -101,7 +109,58 @@ def health_check():
 def valuate_vehicle():
     """
     Analyzes vehicle data and returns market valuation.
-    Expects JSON payload with vehicle details and optional component scores.
+    ---
+    parameters:
+      - name: Authorization
+        in: header
+        type: string
+        required: true
+        description: Bearer token
+      - name: body
+        in: body
+        required: true
+        schema:
+          type: object
+          properties:
+            maf_year:
+              type: integer
+              example: 2016
+            reg_year:
+              type: integer
+              example: 2016
+            mileage_km:
+              type: integer
+              example: 60000
+            previous_owners:
+              type: integer
+              example: 1
+            is_reconditioned:
+              type: integer
+              example: 1
+            power_shutters:
+              type: integer
+              example: 1
+            power_mirrors:
+              type: integer
+              example: 1
+            listed_price_million:
+              type: number
+              example: 4.5
+            fault_class:
+              type: string
+              example: healthy
+            confidence:
+              type: number
+              example: 1.0
+            body_score:
+              type: integer
+              example: 100
+            vin_status:
+              type: string
+              example: original
+    responses:
+      200:
+        description: Valuation successful
     """
     if not request.is_json:
         abort(400, description="Request must be JSON")
