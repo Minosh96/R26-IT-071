@@ -9,6 +9,7 @@ import '../../widgets/inspection_app_bar.dart';
 import '../../widgets/progress_stepper.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/custom_toast.dart';
+import '../../services/api_service.dart';
 
 class AudioRecordingScreen extends StatefulWidget {
   const AudioRecordingScreen({super.key});
@@ -34,6 +35,10 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
   String _recordingPath = '';
   String? _profilePicPath;
   String _activePhaseKey = 'engine_start';
+  bool _isAnalyzing = false;
+  Map<String, dynamic>? _engineResult;
+  final ApiService _apiService = ApiService();
+  String? _audioFilePath;
 
   // Recording phases
   Map<String, String> _phaseStatus = {
@@ -91,30 +96,37 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
   Future<void> _startRecording() async {
     try {
       if (await _recorder.hasPermission()) {
-        final directory = await getApplicationDocumentsDirectory();
-        final path = '${directory.path}/engine_audio_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        final dir = await getApplicationDocumentsDirectory();
+        _audioFilePath = '${dir.path}/engine_recording.wav';
         
-        const config = RecordConfig();
-        await _recorder.start(config, path: path);
+        await _recorder.start(
+          const RecordConfig(encoder: AudioEncoder.wav),
+          path: _audioFilePath!,
+        );
         
         setState(() {
           _isRecording = true;
           _isPaused = false;
-          _recordingPath = path;
+          _recordingPath = _audioFilePath!;
           _recordingDuration = Duration.zero;
           _phaseStatus[_activePhaseKey] = 'recording';
         });
 
-        _timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
-          setState(() {
-            _recordingDuration += const Duration(milliseconds: 100);
-            _updatePhases();
-          });
-        });
+        _startTimer();
       }
     } catch (e) {
       ToastService.show(context, "Error starting recorder", isError: true);
     }
+  }
+
+  void _startTimer() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
+      setState(() {
+        _recordingDuration += const Duration(milliseconds: 100);
+        _updatePhases();
+      });
+    });
   }
 
   void _updatePhases() {
@@ -220,52 +232,138 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
     });
   }
 
-  void _handleNext() {
-    // 1. Mark current phase as done if we have a recording
-    if (_recordingPath.isNotEmpty) {
-      _recordingPaths[_activePhaseKey] = _recordingPath;
-      _recordingDurations[_activePhaseKey] = _recordingDuration;
-      _phaseStatus[_activePhaseKey] = 'done';
-    } else {
-      ToastService.show(context, "Please record audio for the current phase first", isError: true);
+  Future<void> _handleNext() async {
+    if (_audioFilePath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please record engine audio first')),
+      );
       return;
     }
 
-    // 2. Find next phase
-    String? nextPhase;
-    bool foundCurrent = false;
-    for (var phase in _phases) {
-      if (foundCurrent) {
-        nextPhase = phase['key'];
-        break;
-      }
-      if (phase['key'] == _activePhaseKey) {
-        foundCurrent = true;
-      }
-    }
+    setState(() => _isAnalyzing = true);
 
-    if (nextPhase != null) {
-      // Move to next phase on the same screen
-      setState(() {
-        _activePhaseKey = nextPhase!;
-        _recordingPath = _recordingPaths[nextPhase] ?? '';
-        _recordingDuration = _recordingDurations[nextPhase] ?? Duration.zero;
-        _isRecording = false;
-        _isPaused = false;
-        _isPlaying = false;
-      });
+    final result = await _apiService.analyzeEngine(File(_audioFilePath!));
+
+    setState(() {
+      _engineResult = result;
+      _isAnalyzing = false;
+    });
+
+    if (result['status'] == 'success') {
+      _showEngineResult(result);
     } else {
-      // All phases done, move to images
-      if (_recordingPaths.length < _phases.length) {
-        ToastService.show(context, "Please complete all recording phases", isError: true);
-        return;
-      }
-      
-      Navigator.pushNamed(context, '/inspection/images', arguments: {
-        ..._vehicleData,
-        'audio_recordings': _recordingPaths,
-      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Analysis failed: ${result["message"]}'),
+          backgroundColor: Colors.red,
+        ),
+      );
     }
+  }
+
+  void _showEngineResult(Map<String, dynamic> result) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A2035),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // MHS Score circle
+            Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: _getMHSColor(result['mhs_score']).withOpacity(0.2),
+                border: Border.all(
+                  color: _getMHSColor(result['mhs_score']),
+                  width: 3,
+                ),
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('${result["mhs_score"]}',
+                      style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: _getMHSColor(result['mhs_score']))),
+                  const Text('MHS',
+                      style: TextStyle(color: Colors.grey, fontSize: 12)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Fault class badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: _getMHSColor(result['mhs_score']).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                (result['fault_class'] as String)
+                    .toUpperCase()
+                    .replaceAll('_', ' '),
+                style: TextStyle(
+                  color: _getMHSColor(result['mhs_score']),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(result['explanation'] ?? '',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.grey, fontSize: 13)),
+            const SizedBox(height: 8),
+            Text('Confidence: ${result["confidence_percent"]}',
+                style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            const SizedBox(height: 24),
+            // Continue button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2E7D32),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: () {
+                  Navigator.pop(context); // close bottom sheet
+                  Navigator.pushNamed(
+                    context,
+                    '/inspection/images',
+                    arguments: {
+                      ..._vehicleData,
+                      'fault_class': result['fault_class'],
+                      'confidence': result['confidence'],
+                      'mhs_score': result['mhs_score'],
+                      'audio_file': _audioFilePath,
+                    },
+                  );
+                },
+                child: const Text('Continue to Body Scan',
+                    style: TextStyle(
+                        color: Colors.white, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Color _getMHSColor(dynamic score) {
+    final s = (score as num).toInt();
+    if (s >= 80) return const Color(0xFF00E676);
+    if (s >= 50) return const Color(0xFFFFB300);
+    return const Color(0xFFFF1744);
   }
 
   @override

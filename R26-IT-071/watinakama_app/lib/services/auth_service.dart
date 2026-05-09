@@ -4,7 +4,11 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
+  final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
+    aOptions: AndroidOptions(
+      encryptedSharedPreferences: true,
+    ),
+  );
 
   // Future to get shared preferences
   Future<SharedPreferences> get _prefs async => await SharedPreferences.getInstance();
@@ -125,25 +129,40 @@ class AuthService {
   /// Logout user
   Future<void> logout() async {
     await _auth.signOut();
-    await _secureStorage.deleteAll(); // Clear secured credentials
+    
     final prefs = await _prefs;
+    final bool bioEnabled = prefs.getBool('biometric_enabled') ?? false;
+    
+    // Clear secured credentials only if biometric login is NOT enabled
+    // This allows users to log back in using biometrics
+    if (!bioEnabled) {
+      await _secureStorage.deleteAll();
+    }
+
     await prefs.remove('user_name');
     await prefs.remove('user_email');
   }
 
   /// Biometric Login using saved credentials
   Future<Map<String, dynamic>> loginWithBiometrics() async {
-    final String? email = await _secureStorage.read(key: 'email');
-    final String? password = await _secureStorage.read(key: 'password');
+    try {
+      final String? email = await _secureStorage.read(key: 'email');
+      final String? password = await _secureStorage.read(key: 'password');
 
-    if (email != null && password != null) {
-      return await login(email, password);
+      if (email != null && password != null) {
+        return await login(email, password);
+      }
+
+      return {
+        "status": "error",
+        "message": "No credentials stored. Please login with email first.",
+      };
+    } catch (e) {
+      return {
+        "status": "error",
+        "message": "Failed to read credentials: ${e.toString()}",
+      };
     }
-
-    return {
-      "status": "error",
-      "message": "No credentials stored for biometric login",
-    };
   }
 
   /// Check if user is logged in
