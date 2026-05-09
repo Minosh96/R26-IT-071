@@ -1,9 +1,8 @@
-opencv-python-headless
+fastapi
+uvicorn
+opencv-python
 numpy
-tensorflow>=2.16.1
-flask
-flask-cors
-python-dotenv
+Pillow
 python-multipart
 scikit-learn
 python-dotenv

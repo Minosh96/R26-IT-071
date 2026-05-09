@@ -4,14 +4,13 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 
-def load_models():
-    MODEL_PATH = "models/vin_tampering_mobilenetv2.keras"
-    if not os.path.exists(MODEL_PATH):
-        raise FileNotFoundError(f"Model not found at {MODEL_PATH}")
-    model = tf.keras.models.load_model(MODEL_PATH)
-    return model
 
-def predict_vin(image_bytes, model):
+MODEL_PATH = "models/vin_tampering_mobilenetv2.keras"
+
+model = tf.keras.models.load_model(MODEL_PATH)
+
+
+def predict_vin(image_bytes):
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 

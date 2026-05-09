@@ -14,7 +14,7 @@ Vehicle Identification Number (VIN) authentication using clean and tampered VIN 
 
 2. Create a virtual environment:
    ```bash
-   py -3.12 -m venv venv
+   python -m venv venv
    ```
 
 3. Activate the virtual environment:
