@@ -26,7 +26,7 @@ from inference.predict import predict, load_models
 load_dotenv()
 
 # --- Configuration ---
-MODEL_PATH = "models/saved/svm_model_optimized.joblib"
+MODEL_PATH = "models/saved/svm_model.joblib"
 SCALER_PATH = "models/saved/scaler.joblib"
 LABEL_MAP_PATH = "data/processed/embeddings.json"
 YAMNET_URL = "https://tfhub.dev/google/yamnet/1"

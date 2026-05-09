@@ -5,10 +5,12 @@ import joblib
 import json
 import time
 import sys
-from sklearn.model_selection import train_test_split, RandomizedSearchCV, cross_val_score, KFold
-from sklearn.preprocessing import StandardScaler
-from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, VotingRegressor
-from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split, KFold, cross_val_score, RandomizedSearchCV
+from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.pipeline import Pipeline
+from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor, StackingRegressor
+from sklearn.linear_model import Ridge
 from sklearn.metrics import r2_score, mean_absolute_error, mean_squared_error
 from xgboost import XGBRegressor
 from lightgbm import LGBMRegressor
@@ -21,146 +23,38 @@ if sys.stdout.encoding != 'utf-8':
         pass
 
 # CONFIGURATION
-DATA_PATH = "data/processed/alto_augmented.csv"
+DATA_PATH = "data/processed/holistic_augmented.csv"
 RESULTS_SAVE_PATH = "models/saved/ensemble_results.json"
 BEST_MODEL_PATH = "models/saved/advanced_best_model.joblib"
 BEST_SCALER_PATH = "models/saved/advanced_scaler.joblib"
-FEATURE_NAMES_PATH = "models/saved/feature_names.json"
+FEATURE_NAMES_PATH = "models/saved/advanced_feature_names.json"
 RANDOM_SEED = 42
 
+# We now include the inter-component features
 FEATURES = [
     'maf_year', 'vehicle_age', 'mileage_km', 'previous_owners',
-    'is_reconditioned', 'power_shutters', 'power_mirrors', 'reg_gap'
+    'is_reconditioned', 'power_shutters', 'power_mirrors', 'reg_gap',
+    'fault_class', 'confidence', 'body_score'
 ]
 
 TARGET = 'price_million'
 
+def get_extended_features(df):
+    df_new = df.copy()
+    
+    # Feature Selection: robust derived features
+    df_new['mileage_per_year'] = df_new['mileage_km'] / (df_new['vehicle_age'] + 1)
+    df_new['log_mileage_km'] = np.log1p(df_new['mileage_km'])
+    df_new['log_vehicle_age'] = np.log1p(df_new['vehicle_age'])
+    
+    extended_cols = FEATURES + [
+        'mileage_per_year', 'log_mileage_km', 'log_vehicle_age'
+    ]
+    return df_new, extended_cols
 
-def main():
-    print("=== STEP 1: LOAD DATA ===")
-    if not os.path.exists(DATA_PATH):
-        raise FileNotFoundError(f"Data file not found at {DATA_PATH}")
+def run_optimization():
+    print("--- Starting Holistic Model Optimization (Phase 3: Integration) ---")
 
-    df = pd.read_csv(DATA_PATH)
-
-    if 'data_source' in df.columns:
-        df = df.drop(columns=['data_source'])
-        print("Dropped 'data_source' column.")
-
-    print("=== STEP 2: FEATURE ENGINEERING ===")
-    df['mileage_per_year'] = df['mileage_km'] / (df['vehicle_age'] + 1)
-    df['age_squared'] = df['vehicle_age'] ** 2
-    df['mileage_squared'] = df['mileage_km'] ** 2
-    df['owner_age_interaction'] = df['previous_owners'] * df['vehicle_age']
-
-    extended_features = FEATURES + ['mileage_per_year', 'age_squared', 'mileage_squared', 'owner_age_interaction']
-    print(f"Extended features: {extended_features}")
-
-    X = df[extended_features]
-    y = df[TARGET]
-
-    print("Splitting data (80/20)...")
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=RANDOM_SEED)
-
-    print("Applying StandardScaler...")
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
-
-    print("=== STEP 3: DEFINE MODELS ===")
-    models = {
-        'RandomForest': RandomForestRegressor(random_state=RANDOM_SEED),
-        'GradientBoosting': GradientBoostingRegressor(random_state=RANDOM_SEED),
-        'XGBoost': XGBRegressor(random_state=RANDOM_SEED, objective='reg:squarederror'),
-        'LightGBM': LGBMRegressor(random_state=RANDOM_SEED)
-    }
-
-    print("=== STEP 4: HYPERPARAMETER TUNING ===")
-    param_grids = {
-        'RandomForest': {
-            'n_estimators': [200, 300, 500],
-            'max_depth': [None, 10, 20, 30],
-            'min_samples_split': [2, 5, 10]
-        },
-        'GradientBoosting': {
-            'n_estimators': [100, 200, 300],
-            'learning_rate': [0.01, 0.05, 0.1],
-            'max_depth': [3, 4, 5]
-        },
-        'XGBoost': {
-            'n_estimators': [200, 300, 500],
-            'learning_rate': [0.01, 0.05, 0.1],
-            'max_depth': [3, 5, 7],
-            'subsample': [0.8, 1.0]
-        },
-        'LightGBM': {
-            'n_estimators': [200, 300, 500],
-            'learning_rate': [0.01, 0.05, 0.1],
-            'num_leaves': [31, 50, 100]
-        }
-    }
-
-    best_models = {}
-    best_score = float('inf')  # Optimizing for MAE, so lower is better
-    overall_best_model = None
-    overall_best_name = ""
-
-    print("Starting RandomizedSearchCV for each model...")
-    for name, model in models.items():
-        print(f"\n--- Tuning {name} ---")
-        random_search = RandomizedSearchCV(
-            estimator=model,
-            param_distributions=param_grids[name],
-            n_iter=10,
-            cv=5,
-            scoring='neg_mean_absolute_error',
-            n_jobs=-1,
-            random_state=RANDOM_SEED,
-            verbose=1
-        )
-
-        print("=== STEP 5: TRAIN BEST MODELS ===")
-        random_search.fit(X_train_scaled, y_train)
-
-        best_model = random_search.best_estimator_
-        best_models[name] = best_model
-
-        print(f"Best parameters for {name}: {random_search.best_params_}")
-
-        # Evaluate on test set
-        y_pred = best_model.predict(X_test_scaled)
-        r2 = r2_score(y_test, y_pred)
-        mae = mean_absolute_error(y_test, y_pred)
-        mse = mean_squared_error(y_test, y_pred)
-        rmse = np.sqrt(mse)
-
-        print(f"{name} Test Performance:")
-        print(f"  R2 Score: {r2:.4f}")
-        print(f"  MAE: {mae:.4f}")
-        print(f"  RMSE: {rmse:.4f}")
-
-        # Track overall best model based on MAE
-        if mae < best_score:
-            best_score = mae
-            overall_best_model = best_model
-            overall_best_name = name
-
-    print(f"\n=== OVERALL BEST MODEL ===")
-    print(f"Selected: {overall_best_name} with MAE: {best_score:.4f}")
-
-    print("\nSaving best model and scaler...")
-    os.makedirs(os.path.dirname(BEST_MODEL_PATH), exist_ok=True)
-    joblib.dump(overall_best_model, BEST_MODEL_PATH)
-    joblib.dump(scaler, BEST_SCALER_PATH)
-    print(f"Saved model to: {BEST_MODEL_PATH}")
-    print(f"Saved scaler to: {BEST_SCALER_PATH}")
-    print("Optimization Complete.")
-
-
-def run_experiment():
-    print("--- Starting Advanced Model Optimization (Ensemble Experiment) ---")
-
-    # Step 1 — Load and prepare data
     if not os.path.exists(DATA_PATH):
         print(f"Error: Dataset not found at {DATA_PATH}")
         return
@@ -169,137 +63,156 @@ def run_experiment():
     if 'data_source' in df.columns:
         df = df.drop(columns=['data_source'])
 
-    X = df[FEATURES]
+    print("=== STEP 1: FEATURE ENGINEERING & PREPROCESSING ===")
+    df, extended_features = get_extended_features(df)
+    print(f"Total features used: {len(extended_features)}")
+
+    X = df[extended_features]
     y = df[TARGET]
 
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.20, random_state=RANDOM_SEED
     )
 
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    # Separate numeric and categorical columns
+    categorical_cols = ['fault_class']
+    numeric_cols = [c for c in extended_features if c not in categorical_cols]
 
-    print(f"Dataset loaded: {len(df)} records")
+    # Preprocessor using ColumnTransformer
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', StandardScaler(), numeric_cols),
+            ('cat', OneHotEncoder(handle_unknown='ignore'), categorical_cols)
+        ]
+    )
+    
+    # Fit transform the training data
+    X_train_processed = preprocessor.fit_transform(X_train)
+    X_test_processed = preprocessor.transform(X_test)
+
     print(f"Train size: {len(X_train)}, Test size: {len(X_test)}")
+    print(f"Processed feature matrix shape: {X_train_processed.shape}")
 
-    # Step 2 — Define base models
-    rf = RandomForestRegressor(
-        n_estimators=300, max_depth=None,
-        min_samples_split=5,
-        random_state=RANDOM_SEED, n_jobs=-1
-    )
-
-    gb = GradientBoostingRegressor(
-        n_estimators=300, learning_rate=0.05,
-        max_depth=5, random_state=RANDOM_SEED
-    )
-
-    lr = LinearRegression()
-
-    # Step 3 — Define Ensemble Combinations
-    experiments = [
-        {"name": "Random Forest (RF)", "model": rf, "short": "RF"},
-        {"name": "Gradient Boosting (GB)", "model": gb, "short": "GB"},
-        {"name": "Linear Regression (LR)", "model": lr, "short": "LR"},
-        {
-            "name": "RF + GB",
-            "short": "RF + GB",
-            "model": VotingRegressor([('rf', rf), ('gb', gb)])
-        },
-        {
-            "name": "RF + LR",
-            "short": "RF + LR",
-            "model": VotingRegressor([('rf', rf), ('lr', lr)])
-        },
-        {
-            "name": "GB + LR",
-            "short": "GB + LR",
-            "model": VotingRegressor([('gb', gb), ('lr', lr)])
-        },
-        {
-            "name": "RF + GB + LR (all three)",
-            "short": "RF + GB + LR",
-            "model": VotingRegressor([('rf', rf), ('gb', gb), ('lr', lr)])
-        }
-    ]
-
-    results = []
-
-    print("\n" + "─"*70)
-    print(f"{'Experiment':<30} | {'MAE (LKR)':<12} | {'RMSE':<8} | {'R²':<6}")
-    print("─"*70)
-
-    for i, exp in enumerate(experiments, 1):
-        start_time = time.time()
-        model = exp["model"]
-
-        # Train
-        model.fit(X_train_scaled, y_train)
-
-        # Predict
-        y_pred = model.predict(X_test_scaled)
-
-        # Metrics
-        mae = mean_absolute_error(y_test, y_pred)
-        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-        r2 = r2_score(y_test, y_pred)
-        duration = time.time() - start_time
-
-        mae_lkr = mae * 1_000_000
-
-        results.append({
-            "id": i,
-            "name": exp["name"],
-            "short_name": exp["short"],
-            "mae_lkr": mae_lkr,
-            "mae_mil": mae,
-            "rmse": rmse,
-            "r2": r2,
-            "time": duration,
-            "model_obj": model
+    # Step 2 — Define Base Models and Parameter Grids
+    print("\n=== STEP 2: HYPERPARAMETER TUNING BASE MODELS ===")
+    
+    models_to_tune = {
+        'rf': (RandomForestRegressor(random_state=RANDOM_SEED, n_jobs=-1), {
+            'n_estimators': [100, 200, 300],
+            'max_depth': [None, 10, 20],
+            'min_samples_split': [2, 5, 10]
+        }),
+        'gb': (GradientBoostingRegressor(random_state=RANDOM_SEED), {
+            'n_estimators': [100, 200, 300],
+            'learning_rate': [0.01, 0.05, 0.1],
+            'max_depth': [3, 4, 5]
+        }),
+        'xgb': (XGBRegressor(random_state=RANDOM_SEED, objective='reg:squarederror'), {
+            'n_estimators': [100, 200, 300],
+            'learning_rate': [0.01, 0.05, 0.1],
+            'max_depth': [3, 5, 7]
+        }),
+        'lgbm': (LGBMRegressor(random_state=RANDOM_SEED, verbose=-1), {
+            'n_estimators': [100, 200, 300],
+            'learning_rate': [0.01, 0.05, 0.1],
+            'num_leaves': [31, 50, 100]
         })
+    }
 
-        print(f"{exp['name']:<30} | {mae_lkr:,.0f}{'':<4} | {rmse:<8.3f} | {r2:<6.3f}")
+    best_estimators = []
+    
+    start_time = time.time()
+    for name, (model, param_grid) in models_to_tune.items():
+        print(f"  -> Tuning {name}...")
+        search = RandomizedSearchCV(
+            estimator=model,
+            param_distributions=param_grid,
+            n_iter=10,
+            cv=3,
+            scoring='neg_mean_absolute_error',
+            n_jobs=-1,
+            random_state=RANDOM_SEED
+        )
+        search.fit(X_train_processed, y_train)
+        best_estimators.append((name, search.best_estimator_))
+        print(f"     Best params: {search.best_params_}")
 
-    print("─"*70)
+    print("\n=== STEP 3: TRAINING FINAL STACKING ENSEMBLE ===")
+    
+    stacking_regressor = StackingRegressor(
+        estimators=best_estimators,
+        final_estimator=Ridge(),
+        cv=5,
+        n_jobs=-1
+    )
+    
+    # We create a final pipeline that bundles the preprocessor and the stacked model
+    # This allows `inference/valuate.py` to pass the raw dataframe directly!
+    final_pipeline = Pipeline(steps=[
+        ('preprocessor', preprocessor),
+        ('model', stacking_regressor)
+    ])
+    
+    final_pipeline.fit(X_train, y_train) # Fit pipeline on raw data
+    y_pred = final_pipeline.predict(X_test)
 
-    # Step 4 — Find Winner and Save
-    winner = min(results, key=lambda x: x["mae_mil"])
-    for res in results:
-        res["is_winner"] = (res["id"] == winner["id"])
+    # Metrics
+    mae = mean_absolute_error(y_test, y_pred)
+    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    r2 = r2_score(y_test, y_pred)
+    
+    # Calculate Mean Absolute Percentage Error (MAPE)
+    mape = np.mean(np.abs((y_test - y_pred) / y_test))
+    accuracy_percent = (1 - mape) * 100
+    
+    duration = time.time() - start_time
+
+    mae_lkr = mae * 1_000_000
+
+    print(f"\nModel Performance (Test Set):")
+    print(f"  MAE: LKR {mae_lkr:,.0f} ({mae:.4f} M)")
+    print(f"  MAPE: {mape:.2%}")
+    print(f"  Prediction Accuracy: {accuracy_percent:.2f}%")
+    print(f"  RMSE: {rmse:.4f} M")
+    print(f"  R2 Score: {r2:.4f}")
+    print(f"  Total Optimization Time: {duration:.2f}s")
 
     # Cross-validation for the winner
-    print(f"\nWinner: {winner['name']}")
-    print("Performing 5-fold cross-validation on winner...")
-
+    print("\nPerforming 5-fold cross-validation...")
     cv = KFold(n_splits=5, shuffle=True, random_state=RANDOM_SEED)
-    cv_scores = cross_val_score(winner["model_obj"], scaler.transform(X), y, cv=cv, scoring='neg_mean_absolute_error')
+    cv_scores = cross_val_score(final_pipeline, X, y, cv=cv, scoring='neg_mean_absolute_error')
     cv_mae = -cv_scores.mean()
     cv_std = cv_scores.std()
 
     print(f"CV MAE: {cv_mae:.3f} ± {cv_std:.3f} million LKR")
 
-    # Save Best Model and Scaler
+    # Save Best Model Pipeline
+    print("\n=== STEP 4: SAVING ASSETS ===")
     os.makedirs(os.path.dirname(BEST_MODEL_PATH), exist_ok=True)
-    joblib.dump(winner["model_obj"], BEST_MODEL_PATH)
-    joblib.dump(scaler, BEST_SCALER_PATH)
+    joblib.dump(final_pipeline, BEST_MODEL_PATH)
+    # Note: We don't save BEST_SCALER_PATH anymore since the scaler is built INTO the pipeline!
+    
+    with open(FEATURE_NAMES_PATH, 'w') as f:
+        json.dump(extended_features, f)
 
-    # Save results (excluding objects)
-    json_results = []
-    for r in results:
-        r_copy = r.copy()
-        del r_copy["model_obj"]
-        json_results.append(r_copy)
-
+    result_dict = {
+        "name": "Holistic Stacking Ensemble Pipeline",
+        "mae_lkr": mae_lkr,
+        "mae_mil": mae,
+        "mape": mape,
+        "accuracy_percent": accuracy_percent,
+        "rmse": rmse,
+        "r2": r2,
+        "cv_mae": cv_mae,
+        "cv_std": cv_std,
+        "time": duration
+    }
+    
     with open(RESULTS_SAVE_PATH, 'w') as f:
-        json.dump(json_results, f, indent=4)
+        json.dump([result_dict], f, indent=4)
 
-    print(f"\nSaved best model to: {BEST_MODEL_PATH}")
-    print(f"Saved results to: {RESULTS_SAVE_PATH}")
-    print("--- Experiment Complete ---")
-
+    print(f"Saved best model pipeline to: {BEST_MODEL_PATH}")
+    print("--- Holistic Integration Complete ---")
 
 if __name__ == "__main__":
-    main()
-    run_experiment()
+    run_optimization()

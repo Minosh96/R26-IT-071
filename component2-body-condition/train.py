@@ -15,9 +15,7 @@ def train_model():
     # 2. Path to data.yaml
     # Assuming dataset is downloaded in the same folder
     # You might need to update this path after running download_dataset.py
-    project_slug = os.getenv("ROBOFLOW_PROJECT")
-    version = os.getenv("ROBOFLOW_VERSION")
-    data_path = f"{project_slug}-{version}/data.yaml"
+    data_path = "car-damage-demo-100-1/data.yaml"
     
     if not os.path.exists(data_path):
         print(f"Error: {data_path} not found. Please run download_dataset.py first.")
@@ -28,7 +26,7 @@ def train_model():
     # 3. Start training
     results = model.train(
         data=data_path,
-        epochs=50,       # Adjust based on need
+        epochs=1,       # Adjust based on need
         imgsz=640,       # Image size
         batch=16,        # Adjust based on RAM/VRAM
         name='car_damage_model',
