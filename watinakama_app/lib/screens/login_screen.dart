@@ -75,7 +75,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final authenticated = await _bio.authenticate();
     
     if (authenticated) {
-      setState(() => _isLoading = true);
+      if (mounted) setState(() => _isLoading = true);
       
       final result = await _auth.loginWithBiometrics();
       
@@ -88,9 +88,9 @@ class _LoginScreenState extends State<LoginScreen> {
           _showError(result['message']);
         }
       }
-    } else {
-      _showError("Biometric failed. Try email login.");
     }
+    // No error toast here if authenticated is false, as local_auth handles its own dialogs 
+    // and the user might have just cancelled the prompt.
   }
 
   Future<void> _showBiometricDialog() async {
@@ -220,7 +220,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     onPressed: _handleLogin,
                   ),
                   
-                  if (_bioAvailable) ...[
+                  if (_bioAvailable && _bioEnabled) ...[
                     const SizedBox(height: 20),
                     const Center(
                       child: Text(
@@ -235,8 +235,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _buildBiometricButton(Icons.face_retouching_natural, _handleBiometricLogin),
-                        const SizedBox(width: 24),
                         _buildBiometricButton(Icons.fingerprint, _handleBiometricLogin),
                       ],
                     ),

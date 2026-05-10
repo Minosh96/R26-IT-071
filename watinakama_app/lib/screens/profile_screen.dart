@@ -5,11 +5,13 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../constants/app_colors.dart';
 import '../widgets/wave_header.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/custom_button.dart';
 import '../services/auth_service.dart';
+import '../services/biometric_service.dart';
 import '../widgets/custom_toast.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -21,6 +23,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final AuthService _auth = AuthService();
+  final BiometricService _bio = BiometricService();
   final _nameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -28,6 +31,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   
   bool _isLoading = false;
   bool _showPasswordFields = false;
+  bool _isBioAvailable = false;
+  bool _isBioEnabled = false;
   File? _profileImage;
   String _userEmail = '';
   String _userName = '';
@@ -36,6 +41,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _loadUserData();
+    _checkBiometrics();
+  }
+
+  Future<void> _checkBiometrics() async {
+    _isBioAvailable = await _bio.isAvailable();
+    _isBioEnabled = await _bio.isEnabled();
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadUserData() async {
@@ -115,6 +127,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Update password if requested
       if (_showPasswordFields && _passwordController.text.isNotEmpty) {
         await user?.updatePassword(_passwordController.text);
+        
+        // Sync with secure storage for biometric login
+        const secureStorage = FlutterSecureStorage(
+          aOptions: AndroidOptions(
+            encryptedSharedPreferences: true,
+          ),
+        );
+        await secureStorage.write(key: 'password', value: _passwordController.text);
       }
 
       if (mounted) {
@@ -340,7 +360,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     onPressed: _handleSave,
                     isLoading: _isLoading,
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 20),
+                  
+                  if (_isBioAvailable) ...[
+                    _buildLabel("Security"),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: AppColors.darkNavyCard,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppColors.textFieldBorder),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.fingerprint, color: Colors.white, size: 20),
+                              SizedBox(width: 12),
+                              Text("Biometric Login", style: TextStyle(color: Colors.white, fontSize: 14)),
+                            ],
+                          ),
+                          Switch(
+                            value: _isBioEnabled,
+                            activeColor: AppColors.primaryBlue,
+                            onChanged: (value) async {
+                              await _bio.setEnabled(value);
+                              setState(() => _isBioEnabled = value);
+                              if (!value) {
+                                // If disabling, we could clear secure storage, 
+                                // but logout handles that too if bioEnabled is false.
+                                // For now just changing the preference is enough.
+                                ToastService.show(context, "Biometric login disabled");
+                              } else {
+                                ToastService.show(context, "Biometric login enabled");
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
+
                   Center(
                     child: GestureDetector(
                       onTap: () => Navigator.pop(context),

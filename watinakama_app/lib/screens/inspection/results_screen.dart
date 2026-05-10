@@ -5,6 +5,8 @@ import '../../constants/app_colors.dart';
 import '../../widgets/inspection_app_bar.dart';
 import '../../widgets/progress_stepper.dart';
 import '../../services/auth_service.dart';
+import '../../services/api_service.dart';
+import 'dart:io';
 
 class ResultsScreen extends StatefulWidget {
   const ResultsScreen({super.key});
@@ -21,6 +23,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
   String _userName = '';
   String? _profilePicPath;
   final AuthService _auth = AuthService();
+  final ApiService _apiService = ApiService();
 
   // Results from all components
   double _fairValueMillion = 0;
@@ -30,6 +33,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
   double _engineConditionScore = 0;
   String _vinCondition = 'Unknown';
   String _verdict = '';
+  String _explanation = '';
 
   @override
   void initState() {
@@ -58,44 +62,45 @@ class _ResultsScreenState extends State<ResultsScreen> {
   }
 
   Future<void> _fetchValuation() async {
-    try {
-      final response = await http.post(
-        Uri.parse('http://[YOUR_IP]:5004/api/v1/valuate'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer watinakama-valuation-api-2026',
-        },
-        body: jsonEncode({
-          'maf_year': _vehicleData['maf_year'],
-          'reg_year': _vehicleData['reg_year'],
-          'mileage_km': _vehicleData['mileage_km'],
-          'previous_owners': _vehicleData['previous_owners'],
-          'is_reconditioned': _vehicleData['is_reconditioned'],
-          'power_shutters': _vehicleData['power_shutters'],
-          'power_mirrors': _vehicleData['power_mirrors'],
-          'listed_price_million': _vehicleData['listed_price_million'],
-          'fault_class': _vehicleData['fault_class'] ?? 'healthy',
-          'confidence': _vehicleData['confidence'] ?? 1.0,
-          'body_score': _vehicleData['body_score'] ?? 100,
-          'vin_status': _vehicleData['vin_status'] ?? 'original',
-        }),
-      );
+    final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        setState(() {
-          _valuationResult = data;
-          _fairValueMillion = (data['fair_value_million'] ?? 0).toDouble();
-          _rangeMinMillion = (data['range_min_million'] ?? 0).toDouble();
-          _rangeMaxMillion = (data['range_max_million'] ?? 0).toDouble();
-          _verdict = data['verdict'] ?? '';
-          _isLoading = false;
-        });
-      } else {
-        _usePlaceholders();
-      }
-    } catch (e) {
-      _usePlaceholders();
+    final requestBody = {
+      'maf_year': args['maf_year'] ?? 2015,
+      'reg_year': args['reg_year'] ?? 2015,
+      'mileage_km': args['mileage_km'] ?? 80000,
+      'previous_owners': args['previous_owners'] ?? 2,
+      'is_reconditioned': args['is_reconditioned'] ?? 0,
+      'power_shutters': args['power_shutters'] ?? 0,
+      'power_mirrors': args['power_mirrors'] ?? 0,
+      'listed_price_million': args['listed_price_million'] ?? 3.5,
+      'fault_class': args['fault_class'] ?? 'healthy',
+      'confidence': args['confidence'] ?? 1.0,
+      'body_score': args['body_score'] ?? 100,
+      'vin_status': args['vin_status'] ?? 'original',
+    };
+
+    final result = await _apiService.getValuation(requestBody);
+
+    if (result['status'] == 'success' || result['verdict'] != null) {
+      setState(() {
+        _fairValueMillion = (result['fair_value_lkr'] ?? 0) / 1000000;
+        _rangeMinMillion = (result['negotiation_min_lkr'] ?? 0) / 1000000;
+        _rangeMaxMillion = (result['negotiation_max_lkr'] ?? 0) / 1000000;
+        _bodyConditionScore = (args['body_score'] ?? 100).toDouble();
+        _engineConditionScore = (args['mhs_score'] ?? 100).toDouble();
+        _vinCondition = args['vin_status'] ?? 'original';
+        _verdict = result['verdict'] ?? 'FAIR_PRICE';
+        _explanation = result['explanation'] ?? '';
+        _isLoading = false;
+      });
+    } else {
+      // Use demo data if API fails
+      setState(() {
+        _fairValueMillion = 3.85;
+        _rangeMinMillion = 3.6;
+        _rangeMaxMillion = 4.1;
+        _isLoading = false;
+      });
     }
   }
 

@@ -21,14 +21,30 @@ class BiometricService {
   /// Perform biometric authentication
   Future<bool> authenticate() async {
     try {
+      final bool canCheck = await _auth.canCheckBiometrics;
+      final bool isSupported = await _auth.isDeviceSupported();
+      final List<BiometricType> availableBiometrics = await _auth.getAvailableBiometrics();
+      
+      if (!isSupported) {
+        print("Biometrics not supported on this device");
+        return false;
+      }
+
+      if (!canCheck && availableBiometrics.isEmpty) {
+        print("No biometrics enrolled or cannot check");
+        return false;
+      }
+
       return await _auth.authenticate(
         localizedReason: 'Verify your identity to login to Watinakama.lk',
         options: const AuthenticationOptions(
-          biometricOnly: false,
+          biometricOnly: false, // Allow PIN/Pattern fallback for better UX
           stickyAuth: true,
+          useErrorDialogs: true,
         ),
       );
     } catch (e) {
+      print("Biometric Auth Error: $e");
       return false;
     }
   }
