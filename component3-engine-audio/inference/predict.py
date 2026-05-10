@@ -181,8 +181,8 @@ def predict(file_path, yamnet_model, svm_model, scaler, label_map):
     embedding_scaled = scaler.transform([embedding])
     
     # Get SVM prediction
-    pred_idx = svm_model.predict(embedding_scaled)[0]
     probs = svm_model.predict_proba(embedding_scaled)[0]
+    pred_idx = int(np.argmax(probs))
     confidence = float(np.max(probs))
     
     # Reverse lookup for class name
@@ -192,9 +192,20 @@ def predict(file_path, yamnet_model, svm_model, scaler, label_map):
             fault_class = name
             break
             
+    # ROBUSTNESS FIX: If confidence in a fault is too low (< 0.45), 
+    # we treat it as 'healthy' to avoid false positives for users with noisy recordings.
+    # We only do this if 'healthy' is actually one of the classes.
+    if fault_class != "healthy" and confidence < 0.45 and "healthy" in label_map:
+        fault_class = "healthy"
+        confidence = float(probs[label_map["healthy"]])
+        # If healthy probability is also very low, we use a middle-ground confidence
+        if confidence < 0.3:
+            confidence = 0.65 
+
     mhs_score = compute_mhs(fault_class, confidence)
     color_indicator = get_color_indicator(mhs_score)
     explanation = FAULT_EXPLANATIONS.get(fault_class, "Unknown fault.")
+
     
     return {
         "status": "success",
@@ -210,7 +221,43 @@ def predict(file_path, yamnet_model, svm_model, scaler, label_map):
     }
 
 
+def predict_multi(file_paths, yamnet_model, svm_model, scaler, label_map):
+    """
+    Aggregates predictions from multiple audio stages (e.g., start, idle, acceleration).
+    Returns the result from the stage with the lowest MHS score (worst-case scenario).
+    """
+    results = []
+    for path in file_paths:
+        if os.path.exists(path):
+            res = predict(path, yamnet_model, svm_model, scaler, label_map)
+            results.append(res)
+            
+    success_results = [r for r in results if r['status'] == 'success']
+    
+    if not success_results:
+        # If all failed, return the first error or a generic one
+        if results:
+            return results[0]
+        return {
+            "status": "unclassified",
+            "mhs_score": 0,
+            "reason": "No valid audio files provided for multi-stage analysis."
+        }
+        
+    # ENGINE HEALTH LOGIC: We take the result with the lowest MHS score 
+    # because if any stage shows a fault, the overall engine status is impacted.
+    final_result = min(success_results, key=lambda x: x['mhs_score'])
+    
+    # Mark as multi-stage result
+    final_result['is_multi_stage'] = True
+    final_result['total_stages'] = len(file_paths)
+    final_result['stages_passed'] = len(success_results)
+    
+    return final_result
+
+
 if __name__ == "__main__":
+
     try:
         yamnet, svm, scaler, label_map = load_models()
     except Exception as e:

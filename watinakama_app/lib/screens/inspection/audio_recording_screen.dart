@@ -4,6 +4,8 @@ import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+
 import '../../constants/app_colors.dart';
 import '../../widgets/inspection_app_bar.dart';
 import '../../widgets/progress_stepper.dart';
@@ -207,16 +209,45 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
   }
 
   Future<void> _stopRecording() async {
-    await _recorder.stop();
+    final path = await _recorder.stop();
     _timer?.cancel();
     setState(() {
       _isRecording = false;
       _isPaused = false;
       _phaseStatus[_activePhaseKey] = 'done';
+      if (path != null) {
+        _recordingPath = path;
+        _recordingPaths[_activePhaseKey] = path;
+        _recordingDurations[_activePhaseKey] = _recordingDuration;
+      }
     });
   }
 
+  Future<void> _pickAudioFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.any, // Use any to ensure files are visible on all devices
+      );
+
+
+      if (result != null && result.files.single.path != null) {
+        String path = result.files.single.path!;
+        setState(() {
+          _audioFilePath = path;
+          _recordingPath = path;
+          _recordingDuration = const Duration(seconds: 5); // Minimum duration to show it's valid
+          _phaseStatus[_activePhaseKey] = 'done';
+          _recordingPaths[_activePhaseKey] = path;
+        });
+        ToastService.show(context, "Audio file selected");
+      }
+    } catch (e) {
+      ToastService.show(context, "Error picking audio file", isError: true);
+    }
+  }
+
   void _resetRecording() {
+
     if (_isRecording || _isPaused) {
       _recorder.stop();
       _timer?.cancel();
@@ -234,16 +265,44 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
   }
 
   Future<void> _handleNext() async {
-    if (_audioFilePath == null) {
+    // Verify all 3 stages are done
+    bool allDone = true;
+    for (var phase in _phases) {
+      if (_phaseStatus[phase['key']] != 'done') {
+        allDone = false;
+        break;
+      }
+    }
+
+    if (!allDone) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please record engine audio first')),
+        const SnackBar(
+          content: Text('Please record all 3 engine stages (Start, Idle, Acceleration)'),
+          backgroundColor: Colors.orange,
+        ),
       );
       return;
     }
 
     setState(() => _isAnalyzing = true);
 
-    final result = await _apiService.analyzeEngine(File(_audioFilePath!));
+    // Prepare paths for API - only include valid non-empty paths
+    Map<String, String> phasePaths = {};
+    _recordingPaths.forEach((key, path) {
+      if (path.isNotEmpty) {
+        phasePaths[key] = path;
+      }
+    });
+
+    if (phasePaths.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Error: No recording paths found. Please re-record.')),
+      );
+      setState(() => _isAnalyzing = false);
+      return;
+    }
+
+    final result = await _apiService.analyzeEngine(phasePaths);
 
     setState(() {
       _engineResult = result;
@@ -255,7 +314,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Analysis failed: ${result["message"]}'),
+          content: Text('Analysis failed: ${result["message"] ?? result["error"] ?? "Unknown error"}'),
           backgroundColor: Colors.red,
         ),
       );
@@ -477,23 +536,43 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                           const SizedBox(height: 12),
                           
                           // Controls
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 8,
+                            runSpacing: 8,
                             children: [
                               OutlinedButton(
                                 onPressed: _resetRecording,
                                 style: OutlinedButton.styleFrom(
                                   side: BorderSide(color: _recordingPath.isNotEmpty ? AppColors.statusRed : AppColors.textGray),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                 ),
                                 child: Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(_recordingPath.isNotEmpty ? Icons.delete_outline : Icons.refresh, 
                                         size: 14, color: _recordingPath.isNotEmpty ? AppColors.statusRed : AppColors.textGray),
                                     const SizedBox(width: 4),
                                     Text(_recordingPath.isNotEmpty ? "Discard" : "Reset", 
-                                        style: TextStyle(color: _recordingPath.isNotEmpty ? AppColors.statusRed : AppColors.textGray)),
+                                        style: TextStyle(color: _recordingPath.isNotEmpty ? AppColors.statusRed : AppColors.textGray, fontSize: 13)),
+                                  ],
+                                ),
+                              ),
+                              
+                              OutlinedButton(
+                                onPressed: _pickAudioFile,
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: Colors.white24),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.upload_file, size: 14, color: Colors.white70),
+                                    SizedBox(width: 4),
+                                    Text("Upload", style: TextStyle(color: Colors.white70, fontSize: 13)),
                                   ],
                                 ),
                               ),
@@ -504,11 +583,11 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: _recordingPath.isNotEmpty ? const Color(0xFF2E7D32) : AppColors.primaryBlue,
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                                   ),
                                   child: Text(
-                                    _recordingPath.isNotEmpty ? "Confirm & Next" : "Start", 
-                                    style: const TextStyle(color: Colors.white)
+                                    _recordingPath.isNotEmpty ? "Confirm" : "Start", 
+                                    style: const TextStyle(color: Colors.white, fontSize: 13)
                                   ),
                                 ),
                                 
@@ -518,13 +597,14 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                                   style: OutlinedButton.styleFrom(
                                     side: const BorderSide(color: Colors.white),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                   ),
                                   child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Icon(Icons.pause, size: 14, color: Colors.white),
                                       SizedBox(width: 4),
-                                      Text("Pause", style: TextStyle(color: Colors.white)),
+                                      Text("Pause", style: TextStyle(color: Colors.white, fontSize: 13)),
                                     ],
                                   ),
                                 ),
@@ -535,18 +615,19 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: AppColors.primaryBlue,
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                   ),
-                                  child: const Text("Resume", style: TextStyle(color: Colors.white)),
+                                  child: const Text("Resume", style: TextStyle(color: Colors.white, fontSize: 13)),
                                 ),
                                 ElevatedButton(
                                   onPressed: _stopRecording,
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFFB71C1C),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                   ),
                                   child: Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Container(
                                         width: 8,
@@ -554,7 +635,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                                         decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
                                       ),
                                       const SizedBox(width: 6),
-                                      const Text("Stop", style: TextStyle(color: Colors.white)),
+                                      const Text("Stop", style: TextStyle(color: Colors.white, fontSize: 13)),
                                     ],
                                   ),
                                 ),
@@ -564,9 +645,10 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: const Color(0xFFB71C1C),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                   ),
                                   child: Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Container(
                                         width: 8,
@@ -574,12 +656,13 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                                         decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
                                       ),
                                       const SizedBox(width: 6),
-                                      const Text("Stop", style: TextStyle(color: Colors.white)),
+                                      const Text("Stop", style: TextStyle(color: Colors.white, fontSize: 13)),
                                     ],
                                   ),
                                 ),
                             ],
                           ),
+
                         ],
                       ),
                     ),

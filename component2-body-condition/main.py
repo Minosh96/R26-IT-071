@@ -118,7 +118,21 @@ def load_model():
 # Debug endpoints
 # ---------------------------------------------------------
 
+@app.get("/health")
+def health_check():
+    return {
+        "status": "ok",
+        "models_loaded": mobilenet_model is not None and efficientnet_model is not None,
+        "service": "Body Condition API"
+    }
+
+@app.get("/api/v1/health")
+def health_check_v1():
+    return health_check()
+
+
 @app.get("/version")
+
 def version():
     return {
         "api_version": "3.0.0",
@@ -160,25 +174,6 @@ def model_accuracy():
         "reason": "The hybrid model achieved the highest test accuracy compared with the individual MobileNetV3 and EfficientNetV2B0 models."
     }
 
-@app.get("/model-accuracy")
-def model_accuracy():
-    return {
-        "message": "Hybrid model accuracy summary",
-        "selected_model": "Hybrid MobileNetV3 + EfficientNetV2B0",
-        "class_names": CLASS_NAMES,
-        "model_accuracy": {
-            "mobilenetv3_test_accuracy": "85.58%",
-            "efficientnetv2b0_test_accuracy": "85.12%",
-            "hybrid_validation_accuracy": "82.54%",
-            "hybrid_test_accuracy": "86.98%",
-            "hybrid_formula": "0.15 * MobileNetV3 + 0.85 * EfficientNetV2B0"
-        },
-        "hybrid_weights": {
-            "mobilenetv3": 0.15,
-            "efficientnetv2b0": 0.85
-        },
-        "reason": "The hybrid model achieved the highest test accuracy compared with the individual MobileNetV3 and EfficientNetV2B0 models."
-    }
 # ---------------------------------------------------------
 # Home page
 # ---------------------------------------------------------
@@ -354,8 +349,14 @@ def build_response(results):
         "hybrid_formula": MODEL_ACCURACY["hybrid_formula"],
         "vehicle_status": vehicle_status,
         "detected_damage_types": detected_damage_types,
+        "damages": detected_damage_types,
+        "detections": detected_damage_types,
         "body_condition_score": final_score,
+        "body_score": final_score,
+        "condition_score": final_score,
+        "score": final_score,
         "final_body_condition_score": final_score,
+
         "condition": condition_label(final_score),
         "results": results,
         "model_accuracy": MODEL_ACCURACY,
@@ -370,6 +371,7 @@ def build_response(results):
             "up_damage_type": results["up"]["damage_type"]
         }
     }
+
 
 
 # ---------------------------------------------------------

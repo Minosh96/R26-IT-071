@@ -1,0 +1,27 @@
+# Flutter / Dart
+**/build/
+**/.dart_tool/
+**/.pub-cache/
+**/.pub/
+**/.flutter-plugins
+**/.flutter-plugins-dependencies
+**/generated_plugin_registrant.dart
+
+# Python / Environments
+**/venv/
+**/.venv/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+debug_request.log
+
+# IDEs
+.idea/
+.vscode/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db

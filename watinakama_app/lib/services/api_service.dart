@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 class ApiConfig {
   // Change this to your PC's IP address when using real device
   // Use 10.0.2.2 for Android emulator
-  static const String baseIp = ' 192.168.56.1';
+  static const String baseIp = '192.168.1.2';
 
   static const String vinApi = 'http://$baseIp:8000';
   static const String bodyApi = 'http://$baseIp:8080';
@@ -18,16 +18,38 @@ class ApiConfig {
 }
 
 class ApiService {
-  /// Analyzes engine sound from an audio file.
-  Future<Map<String, dynamic>> analyzeEngine(File audioFile) async {
+  /// Analyzes engine sound from one or more audio stages.
+  /// Keys in phasePaths: 'start', 'idle', 'acceleration'
+  Future<Map<String, dynamic>> analyzeEngine(Map<String, String> phasePaths) async {
     try {
       var request = http.MultipartRequest(
           'POST', Uri.parse('${ApiConfig.engineApi}/api/v1/analyze'));
       
       request.headers['Authorization'] = ApiConfig.engineToken;
-      request.files.add(
-        await http.MultipartFile.fromPath('audio_file', audioFile.path),
-      );
+      
+      // Map the keys from the recording screen to the backend expected field names
+      if (phasePaths.containsKey('engine_start')) {
+        request.files.add(await http.MultipartFile.fromPath('audio_start', phasePaths['engine_start']!));
+      } else if (phasePaths.containsKey('start')) {
+        // Backward compatibility for different screen implementations
+        request.files.add(await http.MultipartFile.fromPath('audio_start', phasePaths['start']!));
+      }
+      
+      if (phasePaths.containsKey('idle')) {
+        request.files.add(await http.MultipartFile.fromPath('audio_idle', phasePaths['idle']!));
+      }
+      
+      if (phasePaths.containsKey('acceleration')) {
+        request.files.add(await http.MultipartFile.fromPath('audio_acceleration', phasePaths['acceleration']!));
+      }
+
+      // Backward compatibility for single file/old backend
+      if (request.files.isEmpty && phasePaths.isNotEmpty) {
+        // If no multi-stage keys matched but we have paths, send the first one as audio_file
+        request.files.add(await http.MultipartFile.fromPath('audio_file', phasePaths.values.first));
+      }
+
+      if (request.files.isEmpty) return {"status": "error", "message": "No audio files provided"};
 
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);

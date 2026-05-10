@@ -5,10 +5,15 @@ from inference.predict import predict_vin
 
 app = FastAPI(title="VIN Authentication API", description="API for classifying VIN images as Original, Altered, or Need Review")
 
-@app.get("/")
+@app.get("/health")
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy", "message": "VIN Authentication Service is running"}
+
+@app.get("/api/v1/health")
+async def health_check_v1():
+    return await health_check()
+
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
