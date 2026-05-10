@@ -54,9 +54,10 @@ class _ResultsScreenState extends State<ResultsScreen> {
         _userName = name;
         _profilePicPath = pic;
         _bodyConditionScore = (args['body_score'] ?? 0).toDouble();
-        _engineConditionScore = (args['confidence'] ?? 0).toDouble() * 100; // placeholder for engine score
-        _vinCondition = (args['vin_status'] == 'original') ? 'Original' : 'Unknown';
+        _engineConditionScore = (args['mhs_score'] ?? (args['confidence'] ?? 0).toDouble() * 100).toDouble();
+        _vinCondition = (args['vin_status']?.toString().toLowerCase() == 'original') ? 'Original' : (args['vin_status'] ?? 'Unknown');
       });
+
     }
     _fetchValuation();
   }
@@ -87,21 +88,37 @@ class _ResultsScreenState extends State<ResultsScreen> {
         _rangeMinMillion = (result['negotiation_min_lkr'] ?? 0) / 1000000;
         _rangeMaxMillion = (result['negotiation_max_lkr'] ?? 0) / 1000000;
         _bodyConditionScore = (args['body_score'] ?? 100).toDouble();
-        _engineConditionScore = (args['mhs_score'] ?? 100).toDouble();
-        _vinCondition = args['vin_status'] ?? 'original';
+        _engineConditionScore = (args['mhs_score'] ?? args['confidence']?.toDouble() * 100 ?? 100).toDouble();
+        
+        // Map VIN status to display label
+        String vin = args['vin_status']?.toString().toLowerCase() ?? 'unknown';
+        if (vin == 'original') _vinCondition = 'Original';
+        else if (vin == 'need review' || vin == 'needs review') _vinCondition = 'Needs Review';
+        else if (vin == 'altered') _vinCondition = 'Altered';
+        else _vinCondition = vin.toUpperCase();
+
         _verdict = result['verdict'] ?? 'FAIR_PRICE';
         _explanation = result['explanation'] ?? '';
         _isLoading = false;
+        _valuationResult = result;
       });
     } else {
-      // Use demo data if API fails
+      // Use demo data for prices if API fails, but keep ACTUAL analysis results for scores
       setState(() {
         _fairValueMillion = 3.85;
         _rangeMinMillion = 3.6;
         _rangeMaxMillion = 4.1;
+        _bodyConditionScore = (args['body_score'] ?? 0).toDouble();
+        _engineConditionScore = (args['mhs_score'] ?? (args['confidence'] ?? 0) * 100).toDouble();
+        
+        String vin = args['vin_status']?.toString().toLowerCase() ?? 'unknown';
+        _vinCondition = (vin == 'original') ? 'Original' : 'Needs Review';
+        
         _isLoading = false;
       });
     }
+
+
   }
 
   void _usePlaceholders() {
@@ -161,6 +178,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
                     const SizedBox(height: 16),
                     _buildDepreciationFactorsCard(),
                     const SizedBox(height: 16),
+                    _buildDetailedReportCard(),
+                    const SizedBox(height: 16),
                     ..._buildConditionCards(),
                     const SizedBox(height: 24),
                     Row(
@@ -205,6 +224,83 @@ class _ResultsScreenState extends State<ResultsScreen> {
       ),
     );
   }
+
+  Widget _buildDetailedReportCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A2035),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Detailed Analysis Report",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+          ),
+          const SizedBox(height: 12),
+          _buildDetailItem(
+            "Engine Fault",
+            _valuationResult['engine_description'] ?? "No faults detected",
+            _getScoreColor(_engineConditionScore),
+          ),
+          _buildDetailItem(
+            "Body Damage",
+            _valuationResult['body_damage_category'] != null 
+              ? "Category: ${_valuationResult['body_damage_category'].toString().toUpperCase()}"
+              : "No significant damage",
+            _getScoreColor(_bodyConditionScore),
+          ),
+          _buildDetailItem(
+            "VIN Status",
+            _vinCondition == 'Original' ? "Legally verified" : "Verification required",
+            _vinCondition == 'Original' ? AppColors.statusGreen : AppColors.statusRed,
+          ),
+          if (_valuationResult['vin_warning'] != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 8),
+              child: Text(
+                _valuationResult['vin_warning'],
+                style: const TextStyle(color: AppColors.statusAmber, fontSize: 11, fontStyle: FontStyle.italic),
+              ),
+            ),
+          const Divider(color: Colors.white10, height: 24),
+
+          Text(
+            _explanation.isNotEmpty ? _explanation : "Analysis complete. The vehicle condition has been factored into the fair market value.",
+            style: const TextStyle(color: AppColors.textGray, fontSize: 13, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailItem(String title, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              title,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
 
   Widget _buildFairValueCard() {
     return Container(
@@ -280,12 +376,31 @@ class _ResultsScreenState extends State<ResultsScreen> {
   }
 
   Widget _buildDepreciationFactorsCard() {
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ?? {};
+    
+    // Calculate percentages based on deductions or scores
+    int bodyDep = _valuationResult['body_deduction_lkr'] != null 
+        ? -((_valuationResult['body_deduction_lkr'] as num) / (_fairValueMillion * 1000000) * 100).round()
+        : -((100 - _bodyConditionScore) / 5).round();
+        
+    int mechDep = _valuationResult['engine_deduction_lkr'] != null 
+        ? -((_valuationResult['engine_deduction_lkr'] as num) / (_fairValueMillion * 1000000) * 100).round()
+        : -((100 - _engineConditionScore) / 5).round();
+
+    // Estimate mileage and year depreciation
+    int mileageKm = args['mileage_km'] ?? 80000;
+    int mileageDep = -(mileageKm / 10000).round();
+    
+    int year = args['maf_year'] ?? 2015;
+    int yearDep = -(2026 - year);
+
     final factors = [
-      {'label': 'Body Condition', 'value': -8, 'color': AppColors.statusGreen},
-      {'label': 'Mileage', 'value': -12, 'color': AppColors.statusAmber},
-      {'label': 'Mechanical', 'value': -9, 'color': AppColors.statusAmber},
-      {'label': 'Year', 'value': -6, 'color': AppColors.primaryBlue},
+      {'label': 'Body Condition', 'value': bodyDep, 'color': _getScoreColor(_bodyConditionScore)},
+      {'label': 'Mileage', 'value': mileageDep, 'color': AppColors.statusAmber},
+      {'label': 'Mechanical', 'value': mechDep, 'color': _getScoreColor(_engineConditionScore)},
+      {'label': 'Year', 'value': yearDep, 'color': AppColors.primaryBlue},
     ];
+
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -368,7 +483,9 @@ class _ResultsScreenState extends State<ResultsScreen> {
     return data.map((item) {
       Color valueColor;
       if (item['type'] == 'vin') {
-        valueColor = (item['display'] == 'Original') ? AppColors.statusGreen : AppColors.statusRed;
+        valueColor = (item['display'] == 'Original' || (item['display']?.toString().contains('%') ?? false) && (double.tryParse(item['display']?.toString().replaceAll('%', '') ?? '0') ?? 0) >= 80) 
+            ? AppColors.statusGreen 
+            : (item['display'] == 'Needs Review' ? AppColors.statusAmber : AppColors.statusRed);
       } else {
         double score = item['score'] as double;
         if (score >= 80) {
@@ -403,4 +520,11 @@ class _ResultsScreenState extends State<ResultsScreen> {
       );
     }).toList();
   }
+
+  Color _getScoreColor(double score) {
+    if (score >= 80) return AppColors.statusGreen;
+    if (score >= 50) return AppColors.statusAmber;
+    return AppColors.statusRed;
+  }
 }
+

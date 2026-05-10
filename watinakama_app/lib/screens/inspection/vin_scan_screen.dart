@@ -110,7 +110,7 @@ class _VinScanScreenState extends State<VinScanScreen> {
 
   void _showVinResult(Map<String, dynamic> result) {
     final prediction =
-        (result['prediction'] ?? 'unknown').toString().toLowerCase();
+        (result['label'] ?? result['prediction'] ?? 'unknown').toString().toLowerCase();
     final confidence = (result['confidence'] ?? 0.0) as double;
 
     IconData icon;

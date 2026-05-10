@@ -14,13 +14,38 @@ class VehicleInfoScreen extends StatefulWidget {
 
 class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
   final AuthService _auth = AuthService();
-  final _makeController = TextEditingController();
-  final _modelController = TextEditingController();
-  final _ownersController = TextEditingController();
-  final _mileageController = TextEditingController();
-  final _listedPriceController = TextEditingController();
+  final TextEditingController _ownersController = TextEditingController();
+  final TextEditingController _mileageController = TextEditingController();
+  final TextEditingController _listedPriceController = TextEditingController();
   
+  String _selectedMake = '';
+  String _selectedModel = '';
+  
+  final Map<String, List<String>> _vehicleDataMap = {
+    'Toyota': ['Corolla', 'Camry', 'Prius', 'Yaris', 'Aqua', 'Hilux', 'Fortuner', 'Land Cruiser', 'Prado', 'Vitz', 'Raize'],
+    'Suzuki': ['Alto', 'Wagon R', 'Swift', 'Baleno', 'Celerio', 'Ignis', 'Vitara', 'Grand Vitara', 'Brezza', 'Ertiga', 'XL6', 'Jimny', 'Spacia', 'Hustler', 'Carry'],
+    'Honda': ['Civic', 'Accord', 'Fit (Jazz)', 'City', 'CR-V', 'HR-V', 'BR-V', 'Insight', 'Freed'],
+    'Nissan': ['Sunny', 'Altima', 'Teana', 'X-Trail', 'Qashqai', 'Patrol', 'Leaf', 'Navara', 'Juke'],
+    'Mitsubishi Motors': ['Lancer', 'Outlander', 'Pajero', 'Montero Sport', 'Eclipse Cross', 'Mirage'],
+    'Mazda': ['Mazda2', 'Mazda3', 'Mazda6', 'CX-3', 'CX-5', 'CX-8', 'CX-9'],
+    'Hyundai': ['i10', 'i20', 'i30', 'Accent', 'Elantra', 'Sonata', 'Tucson', 'Santa Fe', 'Creta'],
+    'Kia': ['Picanto', 'Rio', 'Cerato', 'Seltos', 'Sportage', 'Sorento', 'Carnival'],
+    'Ford': ['Fiesta', 'Focus', 'Mustang', 'Ranger', 'Everest', 'Explorer', 'F-150'],
+    'Chevrolet': ['Spark', 'Aveo', 'Cruze', 'Malibu', 'Tahoe', 'Silverado'],
+    'BMW': ['1 Series', '3 Series', '5 Series', '7 Series', 'X1', 'X3', 'X5', 'X7'],
+    'Mercedes-Benz': ['A-Class', 'C-Class', 'E-Class', 'S-Class', 'GLA', 'GLC', 'GLE', 'GLS', 'G-Class'],
+    'Audi': ['A3', 'A4', 'A6', 'A8', 'Q2', 'Q3', 'Q5', 'Q7'],
+    'Volkswagen': ['Polo', 'Golf', 'Passat', 'Jetta', 'Tiguan', 'Touareg'],
+    'Tata Motors': ['Nano', 'Tiago', 'Tigor', 'Nexon', 'Harrier', 'Safari'],
+    'Mahindra': ['Bolero', 'Scorpio', 'Thar', 'XUV300', 'XUV500', 'XUV700'],
+    'Tesla': ['Model S', 'Model 3', 'Model X', 'Model Y', 'Cybertruck'],
+    'Subaru': ['Impreza', 'Legacy', 'Forester', 'Outback', 'XV (Crosstrek)'],
+    'Isuzu': ['D-Max', 'MU-X', 'Elf (truck)'],
+    'Peugeot': ['208', '308', '508', '2008', '3008', '5008'],
+  };
+
   int _selectedMafYear = 2015;
+
   int _selectedRegYear = 2015;
   String _selectedBNR = 'Brand New';
   bool _powerShutters = false;
@@ -46,8 +71,8 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
   }
 
   void _handleNext() {
-    if (_makeController.text.isEmpty || 
-        _modelController.text.isEmpty || 
+    if (_selectedMake.isEmpty || 
+        _selectedModel.isEmpty || 
         _ownersController.text.isEmpty || 
         _mileageController.text.isEmpty || 
         _listedPriceController.text.isEmpty) {
@@ -56,8 +81,9 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
     }
 
     Navigator.pushNamed(context, '/inspection/audio', arguments: {
-      'make': _makeController.text,
-      'model': _modelController.text,
+      'make': _selectedMake,
+      'model': _selectedModel,
+
       'maf_year': _selectedMafYear,
       'reg_year': _selectedRegYear,
       'previous_owners': int.tryParse(_ownersController.text) ?? 1,
@@ -71,13 +97,34 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
 
   @override
   void dispose() {
-    _makeController.dispose();
-    _modelController.dispose();
     _ownersController.dispose();
     _mileageController.dispose();
     _listedPriceController.dispose();
     super.dispose();
   }
+
+  void _showSearchableDropdown({
+    required String title,
+    required List<String> items,
+    required Function(String) onSelected,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.darkNavySurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return _SearchableListModal(
+          title: title,
+          items: items,
+          onSelected: onSelected,
+        );
+      },
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -125,12 +172,42 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildLabel("Make"),
-                        _buildTextField(_makeController, "Suzuki"),
+                        _buildSelectionField(
+                          value: _selectedMake,
+                          hint: "Select Make",
+                          onTap: () {
+                            _showSearchableDropdown(
+                              title: "Select Vehicle Make",
+                              items: _vehicleDataMap.keys.toList()..sort(),
+                              onSelected: (val) {
+                                setState(() {
+                                  _selectedMake = val;
+                                  _selectedModel = ''; // Reset model when make changes
+                                });
+                              },
+                            );
+                          },
+                        ),
                         const SizedBox(height: 14),
                         
                         _buildLabel("Model"),
-                        _buildTextField(_modelController, "Alto"),
+                        _buildSelectionField(
+                          value: _selectedModel,
+                          hint: _selectedMake.isEmpty ? "Select Make first" : "Select Model",
+                          onTap: _selectedMake.isEmpty 
+                            ? null 
+                            : () {
+                                _showSearchableDropdown(
+                                  title: "Select $_selectedMake Model",
+                                  items: _vehicleDataMap[_selectedMake]!..sort(),
+                                  onSelected: (val) {
+                                    setState(() => _selectedModel = val);
+                                  },
+                                );
+                              },
+                        ),
                         const SizedBox(height: 14),
+
                         
                         Row(
                           children: [
@@ -256,7 +333,36 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
     );
   }
 
+  Widget _buildSelectionField({required String value, required String hint, VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.darkNavyCard,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.textFieldBorder.withOpacity(0.5)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              value.isEmpty ? hint : value,
+              style: TextStyle(
+                color: value.isEmpty ? Colors.white24 : Colors.white,
+                fontSize: 14,
+              ),
+            ),
+            const Icon(Icons.keyboard_arrow_down, color: AppColors.textGray, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTextField(TextEditingController controller, String hint, {TextInputType keyboardType = TextInputType.text}) {
+
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
@@ -343,3 +449,92 @@ class StepWavePainter extends CustomPainter {
   @override
   bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
+
+class _SearchableListModal extends StatefulWidget {
+  final String title;
+  final List<String> items;
+  final Function(String) onSelected;
+
+  const _SearchableListModal({
+    required this.title,
+    required this.items,
+    required this.onSelected,
+  });
+
+  @override
+  State<_SearchableListModal> createState() => _SearchableListModalState();
+}
+
+class _SearchableListModalState extends State<_SearchableListModal> {
+  late List<String> _filteredItems;
+  final _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _filteredItems = widget.items;
+  }
+
+  void _filter(String query) {
+    setState(() {
+      _filteredItems = widget.items
+          .where((item) => item.toLowerCase().contains(query.toLowerCase()))
+          .toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.7,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                widget.title,
+                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _searchController,
+            onChanged: _filter,
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: "Search...",
+              hintStyle: const TextStyle(color: Colors.white24),
+              prefixIcon: const Icon(Icons.search, color: Colors.white24),
+              filled: true,
+              fillColor: AppColors.darkNavyCard,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _filteredItems.length,
+              itemBuilder: (context, index) {
+                return ListTile(
+                  title: Text(_filteredItems[index], style: const TextStyle(color: Colors.white)),
+                  onTap: () {
+                    widget.onSelected(_filteredItems[index]);
+                    Navigator.pop(context);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

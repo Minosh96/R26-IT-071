@@ -5,6 +5,7 @@ Provides endpoints for audio analysis, health checks, and system testing.
 
 import os
 import sys
+import time
 import json
 import uuid
 import pathlib
@@ -153,11 +154,26 @@ def analyze_engine_sound():
         type: string
         required: true
         description: Bearer token
+      - name: audio_start
+        in: formData
+        type: file
+        required: false
+        description: Engine start sound file
+      - name: audio_idle
+        in: formData
+        type: file
+        required: false
+        description: Engine idle sound file
+      - name: audio_acceleration
+        in: formData
+        type: file
+        required: false
+        description: Engine acceleration sound file
       - name: audio_file
         in: formData
         type: file
-        required: true
-        description: Vehicle engine sound file (.wav, .mp3)
+        required: false
+        description: Legacy single audio file
       - name: session_id
         in: formData
         type: string
@@ -166,31 +182,48 @@ def analyze_engine_sound():
       200:
         description: Analysis successful
     """
-    # 1. Validate audio_file exists
-    if 'audio_file' not in request.files:
-        abort(400, description="No audio_file part in the request")
-        
-    file = request.files['audio_file']
-    if file.filename == '':
-        abort(400, description="No selected file")
-        
-    # 2. Check extension
-    file_ext = pathlib.Path(file.filename).suffix.lower()
-    if file_ext not in ALLOWED_EXTENSIONS:
-        abort(400, description=f"Unsupported file extension. Allowed: {ALLOWED_EXTENSIONS}")
-        
-    # 3. Save file temporarily
-    temp_filename = f"{uuid.uuid4()}{file_ext}"
-    temp_path = os.path.join(UPLOAD_FOLDER, temp_filename)
+    # --- Multi-Stage Analysis Support ---
+    stages = ['audio_start', 'audio_idle', 'audio_acceleration']
+    files_to_process = []
+    temp_paths = []
     
+    # Check if any stage-specific files are provided
+    for stage in stages:
+        if stage in request.files:
+            file = request.files[stage]
+            if file.filename != '':
+                file_ext = pathlib.Path(file.filename).suffix.lower()
+                if file_ext in ALLOWED_EXTENSIONS:
+                    temp_filename = f"{uuid.uuid4()}_{stage}{file_ext}"
+                    temp_path = os.path.join(UPLOAD_FOLDER, temp_filename)
+                    file.save(temp_path)
+                    files_to_process.append(temp_path)
+                    temp_paths.append(temp_path)
+
+    # Fallback to single 'audio_file' for backward compatibility
+    if not files_to_process and 'audio_file' in request.files:
+        file = request.files['audio_file']
+        if file.filename != '':
+            file_ext = pathlib.Path(file.filename).suffix.lower()
+            if file_ext in ALLOWED_EXTENSIONS:
+                temp_filename = f"{uuid.uuid4()}_single{file_ext}"
+                temp_path = os.path.join(UPLOAD_FOLDER, temp_filename)
+                file.save(temp_path)
+                files_to_process.append(temp_path)
+                temp_paths.append(temp_path)
+
+    if not files_to_process:
+        abort(400, description="No valid audio files found. Expected 'audio_start', 'audio_idle', or 'audio_acceleration'. Check your multipart form data keys.")
+
     session_id = request.form.get('session_id')
     
     try:
-        file.save(temp_path)
-        
-        # 4. Perform prediction
-        # predict() handles internal validation and feature extraction
-        result = predict(temp_path, YAMNET_MODEL, SVM_MODEL, SCALER, LABEL_MAP)
+        # 4. Perform prediction (Multi or Single)
+        if len(files_to_process) > 1:
+            from inference.predict import predict_multi
+            result = predict_multi(files_to_process, YAMNET_MODEL, SVM_MODEL, SCALER, LABEL_MAP)
+        else:
+            result = predict(files_to_process[0], YAMNET_MODEL, SVM_MODEL, SCALER, LABEL_MAP)
         
         # 5. Add session_id if provided
         if session_id:
@@ -203,12 +236,14 @@ def analyze_engine_sound():
         return jsonify({"error": f"Analysis failed: {str(e)}", "status_code": 500}), 500
         
     finally:
-        # 6. Cleanup: Delete temp file
-        if os.path.exists(temp_path):
-            try:
-                os.remove(temp_path)
-            except Exception as e:
-                print(f"Warning: Failed to delete temp file {temp_path}: {e}")
+        # 6. Cleanup: Delete all temp files
+        for path in temp_paths:
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except Exception as e:
+                    print(f"Warning: Failed to delete temp file {path}: {e}")
+
 
 
 if __name__ == "__main__":

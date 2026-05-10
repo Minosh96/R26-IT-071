@@ -97,21 +97,23 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
       _isAnalyzing = false;
     });
 
-    if (result['status'] == 'error') {
+    if (result['status'] == 'error' || result['status_code'] == 503) {
+      String msg = result['message'] ?? 'Body analysis service is unavailable.';
+      if (result['status_code'] == 503) msg = "Body models are still loading or missing. Please wait a moment.";
+      
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Analysis failed: ${result["message"]}'),
-          backgroundColor: Colors.red,
-        ),
+        SnackBar(content: Text(msg), backgroundColor: Colors.red),
       );
+      return;
     } else {
       _showBodyResult(result);
     }
   }
 
   void _showBodyResult(Map<String, dynamic> result) {
-    final double score = (result['body_score'] ?? result['score'] ?? 0).toDouble();
-    final damages = (result['detections'] ?? result['damages'] ?? []) as List;
+    final double score = (result['body_condition_score'] ?? result['body_score'] ?? result['score'] ?? 0).toDouble();
+    final damages = (result['detected_damage_types'] ?? result['detections'] ?? result['damages'] ?? []) as List;
+
 
     showModalBottomSheet(
       context: context,
