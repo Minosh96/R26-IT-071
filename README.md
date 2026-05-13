@@ -19,18 +19,10 @@ This part of our project focuses on preventing vehicle identity fraud by verifyi
 ### Component 2: Automated Vehicle Body Condition Analysis
 **Directory:** `component2-body-condition/`
 
-What we did: We trained a hybrid deep learning classifier combining MobileNetV3 and EfficientNetV2B0 to identify four types of vehicle damage: Dent, Rust, Scratch, and Undamaged. The model uses weighted probability averaging (0.15 × MobileNetV3 + 0.85 × EfficientNetV2B0) and achieved a test accuracy of 86.98%, outperforming individual models. Unlike object detection approaches, this lightweight ensemble is well-suited for our limited dataset and image‑level classification task.
-
-Scoring: We developed a heuristic body condition formula that starts from 100 and subtracts weighted penalties based on the detected damage type and the vehicle view (front, rear, left, right, roof).
-
-Damage penalties: Scratch = 10, Dent = 20, Rust = 25, Undamaged = 0
-
-View weights: Front = 0.25, Rear = 0.25, Left = 0.20, Right = 0.20, Roof = 0.10
-
-Final score = 100 – Σ (View Weight × Damage Penalty). The result is an explainable body condition score between 0 and 100.
-
-Tech Stack: The backend is implemented with FastAPI, loading both pre‑trained models (MobileNetV3 and EfficientNetV2B0) and combining their predictions on the fly. Class ordering follows ["dent", "rust", "scratch", "undamaged"]. The API supports endpoints for model accuracy retrieval, per‑view damage prediction, and final body score calculation.
-
+For this component, we built an AI system that "looks" at the car's exterior to find physical damages.
+*   **What we did:** We trained a **YOLOv8** model to detect four types of damage: Dents, Rust, Scratches, and Panel Misalignment.
+*   **Scoring:** We created a mathematical formula to give the body a "Body Condition Score" from 0 to 100 based on the severity of the detected issues.
+*   **Tech Stack:** Data was managed using **Roboflow**, and the live detection API runs on **FastAPI**.
 
 ### Component 3: Engine Sound-Based Fault Diagnosis
 **Directory:** `component3-engine-audio/`
@@ -59,7 +51,7 @@ We have carefully evaluated each of our models to ensure they provide reliable r
 | :--- | :--- | :--- | :--- | :--- |
 | **C1: VIN Auth** | MobileNetV2 (Transfer Learning) | **94.2%** | 800+ Images | Real VIN images combined with synthetically generated tampering patterns (blur, shift, noise). |
 | **C2: Body Analysis** | Hybrid Ensemble (MobileNetV3 + EffNet) | **86.98%** | 500+ Images | Sourced from a demo dataset and expanded using rotation, flip, and crop augmentations. |
-| **C3: Engine Health** | YAMNet + SVM Classifier | **92.5%** | 400+ Clips | 16 original healthy recordings expanded into 5 fault classes using a mathematical **Fault Generator**. |
+| **C3: Engine Health** | YAMNet + SVM Classifier | **90.06%** | 400+ Clips | 16 original healthy recordings expanded into 5 fault classes using a mathematical **Fault Generator**. |
 | **C4: Valuation** | Stacking Ensemble (RF, XGB, LGBM) | **96.70%** | 2,000+ Records | A synthetic holistic dataset generated to cover various vehicle conditions and market price scenarios. |
 
 ---
@@ -128,5 +120,29 @@ The frontend of Watinakama.LK is a cross-platform mobile app built with **Flutte
 
 ---
 
-## How to Test Our Project
-To run the full system, you need to start each backend component separately. Please check the `README.md` file inside each component folder for specific setup instructions (installing requirements, activating venv, etc.). The Flutter app should then be pointed to the IP address where the services are running.
+## How to Run the Project
+
+Watinakama.LK consists of five main parts (4 backends + 1 mobile app). Follow these steps to get the full system running locally.
+
+### Step 1: Environment Setup
+Ensure you have **Python 3.9+** and **Flutter SDK** installed on your system. We recommend using virtual environments for each backend.
+
+### Step 2: Start the Backend Services
+Open four separate terminal windows and run each component:
+
+| Component | Port | Commands to Run |
+| :--- | :--- | :--- |
+| **C1: VIN Auth** | 8000 | `cd component1-vin-authentication` <br> `python -m venv venv` <br> `venv\Scripts\activate` <br> `pip install -r requirements.txt` <br> `uvicorn api.app:app --port 8000` |
+| **C2: Body Analysis** | 8080 | `cd component2-body-condition` <br> `python -m venv venv` <br> `venv\Scripts\activate` <br> `pip install -r requirements.txt` <br> `uvicorn main:app --port 8080` |
+| **C3: Engine Health** | 5003 | `cd component3-engine-audio` <br> `python -m venv venv` <br> `venv\Scripts\activate` <br> `pip install -r requirements.txt` <br> `python api/app.py` |
+| **C4: Valuation** | 5004 | `cd component4-market-valuation` <br> `python -m venv venv` <br> `venv\Scripts\activate` <br> `pip install -r requirements.txt` <br> `python api/app.py` |
+
+### Step 3: Run the Flutter App
+1.  Navigate to the app directory: `cd watinakama_app`.
+2.  Update the **API IP Address**: Open `lib/services/api_service.dart` and change the `baseIp` to your computer's local IP address (e.g., `192.168.1.10`).
+3.  Install dependencies: `flutter pub get`.
+4.  Run the app: `flutter run`.
+
+---
+
+**Note:** Each backend includes a **Swagger UI** (e.g., `http://localhost:8000/docs`) where you can test individual API endpoints before using the mobile app.
