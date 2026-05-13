@@ -19,10 +19,18 @@ This part of our project focuses on preventing vehicle identity fraud by verifyi
 ### Component 2: Automated Vehicle Body Condition Analysis
 **Directory:** `component2-body-condition/`
 
-For this component, we built an AI system that "looks" at the car's exterior to find physical damages.
-*   **What we did:** We trained a **YOLOv8** model to detect four types of damage: Dents, Rust, Scratches, and Panel Misalignment.
-*   **Scoring:** We created a mathematical formula to give the body a "Body Condition Score" from 0 to 100 based on the severity of the detected issues.
-*   **Tech Stack:** Data was managed using **Roboflow**, and the live detection API runs on **FastAPI**.
+What we did: We trained a hybrid deep learning classifier combining MobileNetV3 and EfficientNetV2B0 to identify four types of vehicle damage: Dent, Rust, Scratch, and Undamaged. The model uses weighted probability averaging (0.15 × MobileNetV3 + 0.85 × EfficientNetV2B0) and achieved a test accuracy of 86.98%, outperforming individual models. Unlike object detection approaches, this lightweight ensemble is well-suited for our limited dataset and image‑level classification task.
+
+Scoring: We developed a heuristic body condition formula that starts from 100 and subtracts weighted penalties based on the detected damage type and the vehicle view (front, rear, left, right, roof).
+
+Damage penalties: Scratch = 10, Dent = 20, Rust = 25, Undamaged = 0
+
+View weights: Front = 0.25, Rear = 0.25, Left = 0.20, Right = 0.20, Roof = 0.10
+
+Final score = 100 – Σ (View Weight × Damage Penalty). The result is an explainable body condition score between 0 and 100.
+
+Tech Stack: The backend is implemented with FastAPI, loading both pre‑trained models (MobileNetV3 and EfficientNetV2B0) and combining their predictions on the fly. Class ordering follows ["dent", "rust", "scratch", "undamaged"]. The API supports endpoints for model accuracy retrieval, per‑view damage prediction, and final body score calculation.
+
 
 ### Component 3: Engine Sound-Based Fault Diagnosis
 **Directory:** `component3-engine-audio/`
