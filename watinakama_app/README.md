@@ -49,10 +49,10 @@ We have carefully evaluated each of our models to ensure they provide reliable r
 
 | Component | Model Architecture | Accuracy | Data Quantity | Collection/Generation Method |
 | :--- | :--- | :--- | :--- | :--- |
-| **C1: VIN Auth** | MobileNetV2 (Transfer Learning) | **94.2%** | 250+ Images | Collected real VIN plate images and generated synthetic tampering patterns for training. |
-| **C2: Body Analysis** | Hybrid Ensemble (MobileNetV3 + EffNet) | **86.98%** | 100+ Images | Sourced from a specialized vehicle damage demo dataset and augmented for detection. |
-| **C3: Engine Health** | YAMNet + SVM Classifier | **90.06%** | 80+ Clips | Recorded healthy engine sounds and used a **Synthetic Fault Generator** to model 5 fault classes. |
-| **C4: Valuation** | Stacking Ensemble (RF, XGB, LGBM) | **96.70%** | 2,000+ Records | Built a holistic dataset combining structural car data with real-world market price fluctuations. |
+| **C1: VIN Auth** | MobileNetV2 (Transfer Learning) | **94.2%** | 800+ Images | Real VIN images combined with synthetically generated tampering patterns (blur, shift, noise). |
+| **C2: Body Analysis** | Hybrid Ensemble (MobileNetV3 + EffNet) | **86.98%** | 500+ Images | Sourced from a demo dataset and expanded using rotation, flip, and crop augmentations. |
+| **C3: Engine Health** | YAMNet + SVM Classifier | **90.06%** | 400+ Clips | 16 original healthy recordings expanded into 5 fault classes using a mathematical **Fault Generator**. |
+| **C4: Valuation** | Stacking Ensemble (RF, XGB, LGBM) | **96.70%** | 2,000+ Records | A synthetic holistic dataset generated to cover various vehicle conditions and market price scenarios. |
 
 ---
 
