@@ -122,20 +122,12 @@ def extract_embedding(yamnet_model, file_path):
 
 
 def compute_mhs(fault_class, confidence):
-    """
-    Calculate MHS based on fault class and model confidence.
-    For healthy class, higher confidence leads to a higher score.
-    For fault classes, the score starts at a base and is penalized by confidence.
-    """
+
     if fault_class == "healthy":
-        # Higher confidence = higher score
-        # confidence 1.0 → MHS 100
-        # confidence 0.5 → MHS 50
+
         mhs = int(round(confidence * 100))
     else:
-        # Fault detected — apply penalty
-        # BASE_SCORE is the ceiling for that fault
-        # Higher confidence in fault = lower score
+
         if fault_class not in BASE_SCORES:
             return 0
         base = BASE_SCORES[fault_class]
@@ -192,9 +184,7 @@ def predict(file_path, yamnet_model, svm_model, scaler, label_map):
             fault_class = name
             break
             
-    # ROBUSTNESS FIX: If confidence in a fault is too low (< 0.45), 
-    # we treat it as 'healthy' to avoid false positives for users with noisy recordings.
-    # We only do this if 'healthy' is actually one of the classes.
+
     if fault_class != "healthy" and confidence < 0.45 and "healthy" in label_map:
         fault_class = "healthy"
         confidence = float(probs[label_map["healthy"]])

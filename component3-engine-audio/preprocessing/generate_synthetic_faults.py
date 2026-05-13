@@ -220,7 +220,7 @@ def generate_fault_dataset():
                 counts["knocking"] += 1
                 
         except Exception as e:
-            # Silently skip file processing errors (as requested)
+            # Silently skip file processing errors
             continue
 
     print("\nDataset Generation Summary:")
