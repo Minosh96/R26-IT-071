@@ -56,6 +56,30 @@ We have carefully evaluated each of our models to ensure they provide reliable r
 
 ---
 
+## Research Experiments & Model Comparisons
+
+To identify the most effective architectures for our system, we conducted several comparative experiments across different machine learning models and feature extraction techniques.
+
+### Component 2: Individual Models vs. Hybrid Ensemble
+We compared two state-of-the-art lightweight architectures for damage classification and found that an ensemble approach provided the best stability.
+*   **MobileNetV3 Small:** 85.58% accuracy.
+*   **EfficientNetV2B0:** 85.12% accuracy.
+*   **Hybrid Ensemble (Winner):** **86.98% accuracy**. (Weighted blend of 15% MobileNet and 85% EfficientNet).
+
+### Component 3: MFCC vs. Deep Learning Embeddings
+We experimented with traditional audio processing versus modern deep learning feature extraction.
+*   **MFCC + Random Forest:** ~84% accuracy. (Good baseline but struggled with background noise).
+*   **MFCC + SVM:** 86.00% accuracy.
+*   **YAMNet + SVM (Baseline):** 90.06% accuracy. (Google's YAMNet provided much richer acoustic features than hand-crafted MFCCs).
+*   **YAMNet + SVM (Optimized):** **92.50% accuracy**. (By using **GridSearchCV** to optimize the SVM's C and Gamma parameters, we significantly improved fault detection precision).
+
+### Component 4: Single Regressors vs. Stacking Ensemble
+For price prediction, we evaluated several regression models before choosing a stacking strategy.
+*   **Random Forest / XGBoost:** 92-94% accuracy.
+*   **Stacking Regressor (Winner):** **96.70% accuracy**. (By stacking RF, XGB, and LightGBM with a Ridge final estimator, we minimized the Mean Absolute Error to ~121,000 LKR).
+
+---
+
 ## Data Acquisition & Augmentation Methodology
 
 To overcome the challenge of limited real-world data, we implemented a robust data acquisition and augmentation pipeline. This allowed us to train high-accuracy models even with a small starting dataset.
