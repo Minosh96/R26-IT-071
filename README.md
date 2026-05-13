@@ -71,7 +71,7 @@ We experimented with traditional audio processing versus modern deep learning fe
 *   **MFCC + Random Forest:** ~84% accuracy. (Good baseline but struggled with background noise).
 *   **MFCC + SVM:** 86.00% accuracy.
 *   **YAMNet + SVM (Baseline):** 90.06% accuracy. (Google's YAMNet provided much richer acoustic features than hand-crafted MFCCs).
-*   **YAMNet + SVM (Optimized):** **93.50% accuracy**. (By using **GridSearchCV** to optimize the SVM's C and Gamma parameters, we significantly improved fault detection precision).
+*   **YAMNet + SVM (Optimized):** **92.50% accuracy**. (By using **GridSearchCV** to optimize the SVM's C and Gamma parameters, we significantly improved fault detection precision).
 
 ### Component 4: Single Regressors vs. Stacking Ensemble
 For price prediction, we evaluated several regression models before choosing a stacking strategy.
@@ -120,5 +120,29 @@ The frontend of Watinakama.LK is a cross-platform mobile app built with **Flutte
 
 ---
 
-## How to Test Our Project
-To run the full system, you need to start each backend component separately. Please check the `README.md` file inside each component folder for specific setup instructions (installing requirements, activating venv, etc.). The Flutter app should then be pointed to the IP address where the services are running.
+## How to Run the Project
+
+Watinakama.LK consists of five main parts (4 backends + 1 mobile app). Follow these steps to get the full system running locally.
+
+### Step 1: Environment Setup
+Ensure you have **Python 3.9+** and **Flutter SDK** installed on your system. We recommend using virtual environments for each backend.
+
+### Step 2: Start the Backend Services
+Open four separate terminal windows and run each component:
+
+| Component | Port | Commands to Run |
+| :--- | :--- | :--- |
+| **C1: VIN Auth** | 8000 | `cd component1-vin-authentication` <br> `python -m venv venv` <br> `venv\Scripts\activate` <br> `pip install -r requirements.txt` <br> `uvicorn api.app:app --port 8000` |
+| **C2: Body Analysis** | 8080 | `cd component2-body-condition` <br> `python -m venv venv` <br> `venv\Scripts\activate` <br> `pip install -r requirements.txt` <br> `uvicorn main:app --port 8080` |
+| **C3: Engine Health** | 5003 | `cd component3-engine-audio` <br> `python -m venv venv` <br> `venv\Scripts\activate` <br> `pip install -r requirements.txt` <br> `python api/app.py` |
+| **C4: Valuation** | 5004 | `cd component4-market-valuation` <br> `python -m venv venv` <br> `venv\Scripts\activate` <br> `pip install -r requirements.txt` <br> `python api/app.py` |
+
+### Step 3: Run the Flutter App
+1.  Navigate to the app directory: `cd watinakama_app`.
+2.  Update the **API IP Address**: Open `lib/services/api_service.dart` and change the `baseIp` to your computer's local IP address (e.g., `192.168.1.10`).
+3.  Install dependencies: `flutter pub get`.
+4.  Run the app: `flutter run`.
+
+---
+
+**Note:** Each backend includes a **Swagger UI** (e.g., `http://localhost:8000/docs`) where you can test individual API endpoints before using the mobile app.
