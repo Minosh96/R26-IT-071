@@ -49,7 +49,7 @@ We have carefully evaluated each of our models to ensure they provide reliable r
 
 | Component | Model Architecture | Accuracy | Data Quantity | Collection/Generation Method |
 | :--- | :--- | :--- | :--- | :--- |
-| **C1: VIN Auth** | MobileNetV2 (Transfer Learning) | **94.2%** | 800+ Images | Real VIN images combined with synthetically generated tampering patterns (blur, shift, noise). |
+| **C1: VIN Auth** | ResNet50 (fine tuned) | **82.69%** | 300+ Images | Real VIN images combined with synthetically generated tampering patterns (blur, shift, noise). |
 | **C2: Body Analysis** | Hybrid Ensemble (MobileNetV3 + EffNet) | **86.98%** | 500+ Images | Sourced from a demo dataset and expanded using rotation, flip, and crop augmentations. |
 | **C3: Engine Health** | YAMNet + SVM Classifier | **90.06%** | 400+ Clips | 16 original healthy recordings expanded into 5 fault classes using a mathematical **Fault Generator**. |
 | **C4: Valuation** | Stacking Ensemble (RF, XGB, LGBM) | **96.70%** | 2,000+ Records | A synthetic holistic dataset generated to cover various vehicle conditions and market price scenarios. |
@@ -59,6 +59,15 @@ We have carefully evaluated each of our models to ensure they provide reliable r
 ## Research Experiments & Model Comparisons
 
 To identify the most effective architectures for our system, we conducted several comparative experiments across different machine learning models and feature extraction techniques.
+
+### Component 1: Individual Models vs. Fine-Tuned and Hybrid CNN Approaches
+Multiple pretrained CNN architectures were evaluated for VIN tampering detection, and fine-tuning significantly improved the overall classification performance.
+*   **EfficientNetB0:** 73.08% accuracy.
+*   **MobileNetV2:** 75.00% accuracy.
+*   **MobileNetV3Large:** 76.92% accuracy.
+*   **ResNet50:** 78.85% accuracy.
+*   **Hybrid CNN Model:** 80.77% accuracy. (Combined feature extraction using ResNet50 and MobileNetV3Large).
+*   **Fine-Tuned ResNet50 (Winner):** **82.69% accuracy**. (Transfer learning with selective fine-tuning of upper ResNet50 layers for VIN-specific feature adaptation).
 
 ### Component 2: Individual Models vs. Hybrid Ensemble
 We compared two state-of-the-art lightweight architectures for damage classification and found that an ensemble approach provided the best stability.
@@ -86,7 +95,7 @@ To overcome the challenge of limited real-world data, we implemented a robust da
 
 ### 1. VIN & Body Images
 *   **Collection:** We collected a baseline set of real vehicle images and VIN plates from local car sales lots and public datasets.
-*   **Augmentation:** We used **OpenCV** and **TensorFlow** to apply geometric transformations (rotation, shearing, zooming) and photometric adjustments (brightness, contrast, noise). This expanded our 100-250 images into a much more diverse set of 500-800 training samples.
+*   **Augmentation:** We used **OpenCV** and **TensorFlow** to apply geometric transformations (rotation, shearing, zooming) and photometric adjustments (brightness, contrast, noise). This expanded our 70-80 images into a much more diverse set of 250-300 training samples.
 *   **Synthetic Tampering:** For the VIN service, we developed a custom script to synthetically "tamper" with original VIN images by digitally altering characters and adding blur to mimic forged plates.
 
 ### 2. Acoustic Engine Data
