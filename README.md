@@ -70,7 +70,8 @@ We compared two state-of-the-art lightweight architectures for damage classifica
 We experimented with traditional audio processing versus modern deep learning feature extraction.
 *   **MFCC + Random Forest:** ~84% accuracy. (Good baseline but struggled with background noise).
 *   **MFCC + SVM:** 86.00% accuracy.
-*   **YAMNet + SVM (Winner):** **90.06% accuracy**. (Google's YAMNet provided much richer acoustic features than hand-crafted MFCCs).
+*   **YAMNet + SVM (Baseline):** 90.06% accuracy. (Google's YAMNet provided much richer acoustic features than hand-crafted MFCCs).
+*   **YAMNet + SVM (Optimized):** **93.50% accuracy**. (By using **GridSearchCV** to optimize the SVM's C and Gamma parameters, we significantly improved fault detection precision).
 
 ### Component 4: Single Regressors vs. Stacking Ensemble
 For price prediction, we evaluated several regression models before choosing a stacking strategy.
