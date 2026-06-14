@@ -43,6 +43,31 @@ class _ResultsScreenState extends State<ResultsScreen> {
     });
   }
 
+  double _parseConfidence(dynamic rawConfidence) {
+    if (rawConfidence == null) return 0.0;
+    if (rawConfidence is num) {
+      double val = rawConfidence.toDouble();
+      return val <= 1.0 ? val : val / 100.0;
+    }
+    if (rawConfidence is String) {
+      final cleaned = rawConfidence.replaceAll('%', '').trim();
+      double? parsed = double.tryParse(cleaned);
+      if (parsed != null) {
+        return parsed <= 1.0 ? parsed : parsed / 100.0;
+      }
+    }
+    return 0.0;
+  }
+
+  double _parseScore(dynamic rawScore, double defaultValue) {
+    if (rawScore == null) return defaultValue;
+    if (rawScore is num) return rawScore.toDouble();
+    if (rawScore is String) {
+      return double.tryParse(rawScore.replaceAll('%', '').trim()) ?? defaultValue;
+    }
+    return defaultValue;
+  }
+
   Future<void> _loadDataAndFetch() async {
     final name = await _auth.getUserName();
     final pic = await _auth.getProfilePicPath();
@@ -53,8 +78,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
         _vehicleData = args; // The whole args map is the vehicle data now
         _userName = name;
         _profilePicPath = pic;
-        _bodyConditionScore = (args['body_score'] ?? 0).toDouble();
-        _engineConditionScore = (args['mhs_score'] ?? (args['confidence'] ?? 0).toDouble() * 100).toDouble();
+        _bodyConditionScore = _parseScore(args['body_score'], 0.0);
+        _engineConditionScore = _parseScore(args['mhs_score'], _parseConfidence(args['confidence']) * 100);
         _vinCondition = (args['vin_status']?.toString().toLowerCase() == 'original') ? 'Original' : (args['vin_status'] ?? 'Unknown');
       });
 
@@ -87,8 +112,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
         _fairValueMillion = (result['fair_value_lkr'] ?? 0) / 1000000;
         _rangeMinMillion = (result['negotiation_min_lkr'] ?? 0) / 1000000;
         _rangeMaxMillion = (result['negotiation_max_lkr'] ?? 0) / 1000000;
-        _bodyConditionScore = (args['body_score'] ?? 100).toDouble();
-        _engineConditionScore = (args['mhs_score'] ?? args['confidence']?.toDouble() * 100 ?? 100).toDouble();
+        _bodyConditionScore = _parseScore(args['body_score'], 100.0);
+        _engineConditionScore = _parseScore(args['mhs_score'], _parseConfidence(args['confidence']) * 100);
         
         // Map VIN status to display label
         String vin = args['vin_status']?.toString().toLowerCase() ?? 'unknown';
@@ -98,7 +123,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
         else _vinCondition = vin.toUpperCase();
 
         _verdict = result['verdict'] ?? 'FAIR_PRICE';
-        _explanation = result['explanation'] ?? '';
+        _explanation = result['verdict_message'] ?? result['explanation'] ?? '';
         _isLoading = false;
         _valuationResult = result;
       });
@@ -108,8 +133,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
         _fairValueMillion = 3.85;
         _rangeMinMillion = 3.6;
         _rangeMaxMillion = 4.1;
-        _bodyConditionScore = (args['body_score'] ?? 0).toDouble();
-        _engineConditionScore = (args['mhs_score'] ?? (args['confidence'] ?? 0) * 100).toDouble();
+        _bodyConditionScore = _parseScore(args['body_score'], 0.0);
+        _engineConditionScore = _parseScore(args['mhs_score'], _parseConfidence(args['confidence']) * 100);
         
         String vin = args['vin_status']?.toString().toLowerCase() ?? 'unknown';
         _vinCondition = (vin == 'original') ? 'Original' : 'Needs Review';
@@ -303,6 +328,45 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
 
   Widget _buildFairValueCard() {
+    if (_verdict == 'DO_NOT_BUY') {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A2035),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.statusRed, width: 2),
+        ),
+        child: Column(
+          children: [
+            const Icon(
+              Icons.warning_amber_rounded,
+              color: AppColors.statusRed,
+              size: 48,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              "VALUATION BLOCKED",
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppColors.statusRed,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _explanation.isNotEmpty ? _explanation : "This vehicle is blocked from valuation due to critical compliance/security risks.",
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            _buildVerdictChip(),
+          ],
+        ),
+      );
+    }
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -347,7 +411,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
     Color textColor;
     String label = _verdict.replaceAll('_', ' ');
 
-    if (_verdict == 'OVERPRICED') {
+    if (_verdict == 'OVERPRICED' || _verdict == 'DO_NOT_BUY') {
       bgColor = AppColors.statusRed.withOpacity(0.2);
       textColor = AppColors.statusRed;
     } else if (_verdict == 'GOOD_DEAL') {
@@ -379,11 +443,11 @@ class _ResultsScreenState extends State<ResultsScreen> {
     final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ?? {};
     
     // Calculate percentages based on deductions or scores
-    int bodyDep = _valuationResult['body_deduction_lkr'] != null 
+    int bodyDep = (_valuationResult['body_deduction_lkr'] != null && _fairValueMillion > 0)
         ? -((_valuationResult['body_deduction_lkr'] as num) / (_fairValueMillion * 1000000) * 100).round()
         : -((100 - _bodyConditionScore) / 5).round();
         
-    int mechDep = _valuationResult['engine_deduction_lkr'] != null 
+    int mechDep = (_valuationResult['engine_deduction_lkr'] != null && _fairValueMillion > 0)
         ? -((_valuationResult['engine_deduction_lkr'] as num) / (_fairValueMillion * 1000000) * 100).round()
         : -((100 - _engineConditionScore) / 5).round();
 
@@ -487,7 +551,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
             ? AppColors.statusGreen 
             : (item['display'] == 'Needs Review' ? AppColors.statusAmber : AppColors.statusRed);
       } else {
-        double score = item['score'] as double;
+        double score = (item['score'] as num).toDouble();
         if (score >= 80) {
           valueColor = AppColors.statusGreen;
         } else if (score >= 50) {

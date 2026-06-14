@@ -90,10 +90,63 @@ def load_model():
     else:
         try:
             print(f"[INFO] Loading MobileNetV3 model from: {MOBILENET_MODEL_PATH}")
-            mobilenet_model = tf.keras.models.load_model(MOBILENET_MODEL_PATH, compile=False)
-            print("[INFO] MobileNetV3 model loaded successfully.")
+            try:
+                mobilenet_model = tf.keras.models.load_model(MOBILENET_MODEL_PATH, compile=False)
+                print("[INFO] MobileNetV3 model loaded successfully via standard load.")
+            except Exception as std_e:
+                print(f"[WARNING] Standard load failed: {std_e}. Attempting manual reconstruction and weight load...")
+                import h5py
+                
+                # Reconstruct MobileNetV3 architecture
+                base_model = tf.keras.applications.MobileNetV3Small(
+                    input_shape=(224, 224, 3), 
+                    include_top=False, 
+                    weights=None
+                )
+                reconstructed_model = tf.keras.models.Sequential([
+                    tf.keras.layers.Input(shape=(224, 224, 3)),
+                    base_model,
+                    tf.keras.layers.GlobalAveragePooling2D(),
+                    tf.keras.layers.Dropout(0.2),
+                    tf.keras.layers.Dense(len(CLASS_NAMES), activation="softmax")
+                ])
+                
+                with h5py.File(MOBILENET_MODEL_PATH, 'r') as f:
+                    h5_base_group = f['model_weights']['MobileNetV3Small']
+                    for layer in base_model.layers:
+                        if not layer.weights:
+                            continue
+                        h5_layer_name = layer.name
+                        if h5_layer_name in h5_base_group:
+                            g = h5_base_group[h5_layer_name]
+                            weight_values = []
+                            for w in layer.weights:
+                                w_name = w.name.split('/')[-1].split(':')[0]
+                                if w_name in g:
+                                    weight_values.append(g[w_name][()])
+                            if len(weight_values) == len(layer.weights):
+                                layer.set_weights(weight_values)
+                            else:
+                                print(f"[ERROR] Weight count mismatch for layer {layer.name}")
+                        else:
+                            print(f"[WARNING] Layer {layer.name} not found in H5 group")
+                            
+                    dense_layer = reconstructed_model.layers[-1]
+                    if 'dense' in f['model_weights']:
+                        dense_weights = {}
+                        def find_dense_weights(name, obj):
+                            if isinstance(obj, h5py.Dataset):
+                                w_name = name.split('/')[-1]
+                                dense_weights[w_name] = obj[()]
+                        f['model_weights']['dense'].visititems(find_dense_weights)
+                        if 'kernel' in dense_weights and 'bias' in dense_weights:
+                            dense_layer.set_weights([dense_weights['kernel'], dense_weights['bias']])
+                            print("[INFO] Dense layer weights loaded successfully.")
+                
+                mobilenet_model = reconstructed_model
+                print("[INFO] MobileNetV3 model loaded successfully via manual reconstruction.")
         except Exception as e:
-            print(f"[ERROR] Failed to load MobileNetV3 model: {e}")
+            print(f"[ERROR] Failed to load/reconstruct MobileNetV3 model: {e}")
             mobilenet_model = None
 
     if not os.path.exists(EFFICIENTNET_MODEL_PATH):

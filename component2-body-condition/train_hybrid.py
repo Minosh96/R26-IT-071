@@ -15,7 +15,7 @@ BASE_DATA_DIR = "car-damage-demo-100-1"
 CLASSIFICATION_DIR = "data_classification"
 IMG_SIZE = (224, 224)
 BATCH_SIZE = 16
-EPOCHS = 5 # Small number for quick restoration
+EPOCHS = 12 # Small number for quick restoration
 CLASS_NAMES = ["dent", "rust", "scratch", "undamaged"]
 
 def prepare_classification_dataset():
@@ -47,14 +47,21 @@ def prepare_classification_dataset():
             if os.path.exists(lbl_path):
                 with open(lbl_path, 'r') as f:
                     lines = f.readlines()
-                    if lines:
-                        # Map YOLO index to our class names
-                        # data.yaml: 2: Dent, 8: Scratch
-                        first_line = lines[0].split()
-                        yolo_idx = int(first_line[0])
-                        if yolo_idx == 2: target_class = "dent"
-                        elif yolo_idx == 8: target_class = "scratch"
-                        # Note: 'rust' is missing from demo dataset, will stay empty
+                classes = [int(line.split()[0]) for line in lines if line.strip()]
+                if 2 in classes:
+                    target_class = "dent"
+                elif 7 in classes:
+                    target_class = "scratch"
+                else:
+                    # Part-only annotations fallback to prefix severity mappings
+                    prefix = img_file.split('_')[0].lower()
+                    if prefix in ['major', 'moderate']:
+                        target_class = "dent"
+                    elif prefix in ['minor', 'damage']:
+                        target_class = "scratch"
+                    else:
+                        target_class = "undamaged"
+
             
             shutil.copy(
                 os.path.join(img_dir, img_file),

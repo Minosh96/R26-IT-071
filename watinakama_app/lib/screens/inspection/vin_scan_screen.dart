@@ -96,10 +96,12 @@ class _VinScanScreenState extends State<VinScanScreen> {
       _isAnalyzing = false;
     });
 
-    if (result['status'] == 'error') {
+    if (result['status'] == 'error' || result['status_code'] == 503) {
+      String msg = result['message'] ?? 'VIN analysis failed.';
+      if (result['status_code'] == 503) msg = "VIN models are still loading or missing. Please wait a moment.";
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Analysis failed: ${result["message"]}'),
+          content: Text('Analysis failed: $msg'),
           backgroundColor: Colors.red,
         ),
       );
@@ -111,7 +113,7 @@ class _VinScanScreenState extends State<VinScanScreen> {
   void _showVinResult(Map<String, dynamic> result) {
     final prediction =
         (result['label'] ?? result['prediction'] ?? 'unknown').toString().toLowerCase();
-    final confidence = (result['confidence'] ?? 0.0) as double;
+    final confidence = (result['confidence'] ?? 0.0).toDouble();
 
     IconData icon;
     Color color;
