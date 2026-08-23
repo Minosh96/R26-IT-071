@@ -5,39 +5,9 @@ This component handles the authentication of Vehicle Identification Number (VIN)
 ## Purpose
 Vehicle Identification Number (VIN) authentication using clean and tampered VIN images. Forensic pattern analysis and OCR text extraction will be integrated in future phases.
 
-## Installation
+## Installation & Running
 
-1. Navigate to the component directory:
-   ```bash
-   cd component1-vin-authentication
-   ```
-
-2. Create a virtual environment:
-   ```bash
-   python -m venv venv
-   ```
-
-3. Activate the virtual environment:
-   - Windows: `venv\Scripts\activate`
-   - Unix/macOS: `source venv/bin/activate`
-
-4. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-## Running the API
-
-To start the FastAPI server, run:
-```bash
-python -m api.app
-```
-Or using uvicorn directly:
-```bash
-uvicorn api.app:app --reload
-```
-
-The API will be available at `http://localhost:8000`.
+See [RUNNING.md](../RUNNING.md) at the repo root for setup and run instructions.
 
 ## Testing the API
 
@@ -56,11 +26,4 @@ You can test the endpoints using the built-in Swagger UI:
 - `models/`: Model training scripts and saved model files.
 - `preprocessing/`: Scripts for data preparation and synthetic tampering generation.
 - `tests/`: Unit and integration tests.
-
-## note
-
-- cd D:\Backup\Savinda\SLIIT\Y4S1\RP
-- vinenv\Scripts\activate                     
-- cd D:\Backup\Savinda\SLIIT\Y4S1\RP\R26-IT-071\R26-IT-071\component1-vin-authentication
-- uvicorn api.app:app
 

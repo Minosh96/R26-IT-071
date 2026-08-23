@@ -96,5 +96,6 @@ The frontend of Watinakama.LK is a cross-platform mobile app built with **Flutte
 
 ---
 
-## How to Test Our Project
-To run the full system, you need to start each backend component separately. Please check the `README.md` file inside each component folder for specific setup instructions (installing requirements, activating venv, etc.). The Flutter app should then be pointed to the IP address where the services are running.
+## How to Run the Project
+
+See [RUNNING.md](../RUNNING.md) at the repo root for the full setup and run instructions for all four backends and this app.
