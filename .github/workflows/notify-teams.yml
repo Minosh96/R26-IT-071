@@ -14,12 +14,21 @@ jobs:
           TITLE: ${{ github.event.pull_request.title }}
           NUMBER: ${{ github.event.pull_request.number }}
           AUTHOR: ${{ github.event.pull_request.user.login }}
+          AVATAR: ${{ github.event.pull_request.user.avatar_url }}
           URL: ${{ github.event.pull_request.html_url }}
           REPO: ${{ github.repository }}
+          HEAD: ${{ github.event.pull_request.head.ref }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+          FILES: ${{ github.event.pull_request.changed_files }}
+          ADDED: ${{ github.event.pull_request.additions }}
+          REMOVED: ${{ github.event.pull_request.deletions }}
         run: |
           jq -n \
             --arg title "$TITLE" --arg num "$NUMBER" \
-            --arg author "$AUTHOR" --arg url "$URL" --arg repo "$REPO" \
+            --arg author "$AUTHOR" --arg avatar "$AVATAR" \
+            --arg url "$URL" --arg repo "$REPO" \
+            --arg head "$HEAD" --arg base "$BASE" \
+            --arg files "$FILES" --arg added "$ADDED" --arg removed "$REMOVED" \
             '{
               type: "message",
               attachments: [{
@@ -28,16 +37,75 @@ jobs:
                   "$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
                   type: "AdaptiveCard",
                   version: "1.4",
+                  msteams: { width: "Full" },
                   body: [
-                    { type: "TextBlock", size: "Medium", weight: "Bolder",
-                      text: ("🔀 PR #" + $num + ": " + $title) },
-                    { type: "FactSet", facts: [
-                        { title: "Repository", value: $repo },
-                        { title: "Opened by", value: $author }
-                    ]}
+                    {
+                      type: "Container",
+                      style: "accent",
+                      bleed: true,
+                      items: [
+                        { type: "TextBlock", text: "🔀 NEW PULL REQUEST",
+                          weight: "Bolder", size: "Small", spacing: "None" }
+                      ]
+                    },
+                    {
+                      type: "TextBlock",
+                      text: ("#" + $num + " · " + $title),
+                      size: "ExtraLarge",
+                      weight: "Bolder",
+                      wrap: true,
+                      spacing: "Medium"
+                    },
+                    {
+                      type: "ColumnSet",
+                      spacing: "Small",
+                      columns: [
+                        { type: "Column", width: "auto", items: [
+                          { type: "Image", url: $avatar, size: "Small",
+                            style: "Person", altText: $author }
+                        ]},
+                        { type: "Column", width: "stretch", verticalContentAlignment: "Center",
+                          items: [
+                            { type: "TextBlock", text: ("**" + $author + "** wants to merge into `" + $base + "`"),
+                              wrap: true, spacing: "None" },
+                            { type: "TextBlock", text: ("`" + $head + "` → `" + $base + "`"),
+                              isSubtle: true, size: "Small", wrap: true, spacing: "None" }
+                          ]}
+                      ]
+                    },
+                    {
+                      type: "ColumnSet",
+                      separator: true,
+                      spacing: "Medium",
+                      columns: [
+                        { type: "Column", width: "stretch", items: [
+                          { type: "TextBlock", text: $files, size: "Large", weight: "Bolder",
+                            horizontalAlignment: "Center", spacing: "None" },
+                          { type: "TextBlock", text: "files", isSubtle: true, size: "Small",
+                            horizontalAlignment: "Center", spacing: "None" }
+                        ]},
+                        { type: "Column", width: "stretch", items: [
+                          { type: "TextBlock", text: ("+" + $added), size: "Large", weight: "Bolder",
+                            color: "Good", horizontalAlignment: "Center", spacing: "None" },
+                          { type: "TextBlock", text: "added", isSubtle: true, size: "Small",
+                            horizontalAlignment: "Center", spacing: "None" }
+                        ]},
+                        { type: "Column", width: "stretch", items: [
+                          { type: "TextBlock", text: ("−" + $removed), size: "Large", weight: "Bolder",
+                            color: "Attention", horizontalAlignment: "Center", spacing: "None" },
+                          { type: "TextBlock", text: "removed", isSubtle: true, size: "Small",
+                            horizontalAlignment: "Center", spacing: "None" }
+                        ]}
+                      ]
+                    },
+                    {
+                      type: "TextBlock", text: ("📁 " + $repo), isSubtle: true, size: "Small",
+                      wrap: true, spacing: "Medium"
+                    }
                   ],
                   actions: [
-                    { type: "Action.OpenUrl", title: "View pull request", url: $url }
+                    { type: "Action.OpenUrl", title: "👀 Review this PR", url: $url, style: "positive" },
+                    { type: "Action.OpenUrl", title: "Files changed", url: ($url + "/files") }
                   ]
                 }
               }]
