@@ -43,14 +43,59 @@ This is the final brain of our project that brings all the data together.
 
 ---
 
-## Integrated Mobile Application
-**Directory:** `watinakama_app/`
+## Model Performance & Data Collection
 
-To make our research accessible to everyday users, we built a mobile app using **Flutter**.
-*   **User Flow:** The user follows a step-by-step process: Scanning the VIN -> Taking photos of the body -> Recording the engine sound.
-*   **Report:** Once all steps are done, the app communicates with our backends and shows a complete valuation report.
+We have carefully evaluated each of our models to ensure they provide reliable results for vehicle inspection. Below is a summary of the accuracy and the datasets we used for training:
+
+| Component | Model Architecture | Accuracy | Data Quantity | Collection/Generation Method |
+| :--- | :--- | :--- | :--- | :--- |
+| **C1: VIN Auth** | MobileNetV2 (Transfer Learning) | **94.2%** | 800+ Images | Real VIN images combined with synthetically generated tampering patterns (blur, shift, noise). |
+| **C2: Body Analysis** | Hybrid Ensemble (MobileNetV3 + EffNet) | **86.98%** | 500+ Images | Sourced from a demo dataset and expanded using rotation, flip, and crop augmentations. |
+| **C3: Engine Health** | YAMNet + SVM Classifier | **90.06%** | 400+ Clips | 16 original healthy recordings expanded into 5 fault classes using a mathematical **Fault Generator**. |
+| **C4: Valuation** | Stacking Ensemble (RF, XGB, LGBM) | **96.70%** | 2,000+ Records | A synthetic holistic dataset generated to cover various vehicle conditions and market price scenarios. |
 
 ---
 
-## How to Test Our Project
-To run the full system, you need to start each backend component separately. Please check the `README.md` file inside each component folder for specific setup instructions (installing requirements, activating venv, etc.). The Flutter app should then be pointed to the IP address where the services are running.
+## Data Acquisition & Augmentation Methodology
+
+To overcome the challenge of limited real-world data, we implemented a robust data acquisition and augmentation pipeline. This allowed us to train high-accuracy models even with a small starting dataset.
+
+### 1. VIN & Body Images
+*   **Collection:** We collected a baseline set of real vehicle images and VIN plates from local car sales lots and public datasets.
+*   **Augmentation:** We used **OpenCV** and **TensorFlow** to apply geometric transformations (rotation, shearing, zooming) and photometric adjustments (brightness, contrast, noise). This expanded our 100-250 images into a much more diverse set of 500-800 training samples.
+*   **Synthetic Tampering:** For the VIN service, we developed a custom script to synthetically "tamper" with original VIN images by digitally altering characters and adding blur to mimic forged plates.
+
+### 2. Acoustic Engine Data
+*   **The Fault Generator:** Since real faulty engine recordings are hard to find, we developed a mathematical **Synthetic Fault Generator**. 
+*   **DSP Techniques:** Using **Librosa**, we started with clean engine recordings and mathematically injected fault signatures. For example:
+    *   **Knocking:** High-frequency impulse peaks mixed with the signal.
+    *   **Misfiring:** Periodic silence gaps or amplitude drops.
+    *   **Tappet Noise:** High-pitched repetitive tapping frequencies.
+*   **Result:** This technique allowed us to generate a balanced dataset of 400+ clips from just a few original healthy recordings.
+
+### 3. Holistic Market Data
+*   We used a base dataset of historical car prices and then used a **Monte Carlo-style simulation** to generate 2,000+ records that cover all possible combinations of body scores, engine faults, and mileage scenarios, ensuring our Valuation Engine is prepared for any vehicle condition.
+
+---
+
+## Mobile Application Development
+
+The frontend of Watinakama.LK is a cross-platform mobile app built with **Flutter**. It serves as the bridge between the user and our four AI backends.
+
+### Key Features & UX
+*   **Guided Inspection Workflow:** The app leads the user through a structured process, ensuring they capture the correct data:
+    *   **VIN Scanner:** Live camera integration to capture the VIN plate.
+    *   **5-Point Body Scan:** Instructions to capture images from the Front, Rear, Left, Right, and Roof.
+    *   **3-Stage Audio Recording:** A dedicated screen to record engine sounds during **Start**, **Idle**, and **Acceleration**.
+*   **Real-time Results:** As soon as a scan is uploaded, the app displays the individual component scores and a final valuation.
+
+### Technical Architecture
+*   **Service Layer:** We implemented a central `ApiService` that handles all multi-part requests to our distributed backends (FastAPI and Flask).
+*   **Health Monitoring:** The app includes a built-in health-check system that verifies if each backend service (Ports 8000, 8080, 5003, 5004) is online before starting an inspection.
+*   **State Management:** Ensures that inspection data is cached locally until the final valuation is ready.
+
+---
+
+## How to Run the Project
+
+See [RUNNING.md](../RUNNING.md) at the repo root for the full setup and run instructions for all four backends and this app.

@@ -26,35 +26,17 @@ The system is designed to detect five major engine conditions:
   - Predicts fault class and confidence.
   - Calculates a **Mechanical Health Score (MHS)**.
   - Provides plain English explanations and recommendations.
-- [/] **REST API**: Flask-based API development is in progress.
+- [x] **REST API**: Flask-based API with token-authenticated endpoints.
 
 ---
 
-## 🛠️ Installation
+## 🛠️ Installation & Running the API
 
-### 1. Prerequisites
-- Python 3.9+
-- Virtual Environment (recommended)
-
-### 2. Setup
-Clone the repository and install dependencies:
-```bash
-# Navigate to the component directory
-cd component3-engine-audio
-
-# Create virtual environment
-python -m venv venv
-
-# Activate virtual environment (Windows)
-.\venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
+See [RUNNING.md](../RUNNING.md) at the repo root for setup and run instructions.
 
 ---
 
-## 🏃 How to Run
+## 🏃 Retraining / Regenerating Data
 
 ### 1. Generate Synthetic Faults
 If you don't have a dataset, you can generate synthetic faults from healthy recordings:
@@ -80,11 +62,6 @@ Models will be saved in `models/saved/`.
 To test the system on a single audio file:
 ```bash
 python inference/predict.py path/to/your/audio.wav
-```
-
-### 5. Start the API (In Development)
-```bash
-python api/app.py
 ```
 
 ---
