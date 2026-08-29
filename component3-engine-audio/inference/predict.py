@@ -183,14 +183,6 @@ def predict(file_path, yamnet_model, svm_model, scaler, label_map):
         if idx == pred_idx:
             fault_class = name
             break
-            
-
-    if fault_class != "healthy" and confidence < 0.45 and "healthy" in label_map:
-        fault_class = "healthy"
-        confidence = float(probs[label_map["healthy"]])
-        # If healthy probability is also very low, we use a middle-ground confidence
-        if confidence < 0.3:
-            confidence = 0.65 
 
     mhs_score = compute_mhs(fault_class, confidence)
     color_indicator = get_color_indicator(mhs_score)

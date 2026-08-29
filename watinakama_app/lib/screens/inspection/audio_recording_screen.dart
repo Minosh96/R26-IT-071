@@ -56,9 +56,9 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
   late AnimationController _waveController;
 
   final List<Map<String, dynamic>> _phases = [
-    {'key': 'engine_start', 'title': 'Engine Start', 'subtitle': 'Cranking & Cold Start', 'duration': 15},
-    {'key': 'idle', 'title': 'Idle Running', 'subtitle': 'Steady State Listening', 'duration': 30},
-    {'key': 'acceleration', 'title': 'Acceleration', 'subtitle': 'Light Throttle Press', 'duration': 10},
+    {'key': 'engine_start', 'title': 'Engine Start', 'duration': 15},
+    {'key': 'idle', 'title': 'Idle Running', 'duration': 30},
+    {'key': 'acceleration', 'title': 'Acceleration', 'duration': 10},
   ];
 
   @override
@@ -623,19 +623,9 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    RichText(
-                                      text: TextSpan(
-                                        children: [
-                                          TextSpan(
-                                            text: phase['title'],
-                                            style: const TextStyle(color: AppColors.textWhite, fontWeight: FontWeight.bold, fontSize: 14),
-                                          ),
-                                          TextSpan(
-                                            text: " - ${phase['subtitle']}",
-                                            style: const TextStyle(color: AppColors.textGray, fontSize: 13),
-                                          ),
-                                        ],
-                                      ),
+                                    Text(
+                                      phase['title'],
+                                      style: const TextStyle(color: AppColors.textWhite, fontWeight: FontWeight.bold, fontSize: 14),
                                     ),
                                   ],
                                 ),
