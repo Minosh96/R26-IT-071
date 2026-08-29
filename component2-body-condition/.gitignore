@@ -12,6 +12,8 @@ datasets/
 *.keras
 *.h5
 *.npz
+!damage_capped_weights.npz
+!part_only_weights.npz
 
 # App Directories
 outputs/
