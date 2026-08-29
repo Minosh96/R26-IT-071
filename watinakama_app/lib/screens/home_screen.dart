@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../constants/app_colors.dart';
 import '../widgets/wave_header.dart';
 import '../widgets/custom_button.dart';
+import '../widgets/app_card.dart';
 import '../services/auth_service.dart';
 import '../widgets/custom_toast.dart';
 import '../services/api_service.dart';
+import '../services/inspection_history_service.dart';
+import '../models/inspection_record.dart';
+import '../widgets/result_sheet.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,27 +24,31 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _profilePicPath;
   DateTime? _lastPressedAt;
   final ApiService _apiService = ApiService();
+  final InspectionHistoryService _historyService = InspectionHistoryService();
   Map<String, bool> _apiStatus = {
     'engine': false,
     'body': false,
     'vin': false,
     'valuation': false,
   };
-
-  final List<Map<String, String>> _inspections = [
-    {"model": "Suzuki Alto", "date": "2026-04-15", "reg": "WP CAA 4512"},
-    {"model": "Suzuki Alto", "date": "2026-04-15", "reg": "WP ABC 4812"},
-    {"model": "Suzuki Alto", "date": "2026-04-15", "reg": "WP ABC 4812"},
-  ];
+  List<InspectionRecord> _recentInspections = [];
 
   @override
   void initState() {
     super.initState();
     _loadUserName();
     _checkApiStatus();
+    _loadHistory();
   }
 
-  _checkApiStatus() async {
+  Future<void> _loadHistory() async {
+    final history = await _historyService.getHistory();
+    if (mounted) {
+      setState(() => _recentInspections = history);
+    }
+  }
+
+  Future<void> _checkApiStatus() async {
     final engine = await _apiService.checkHealth(ApiConfig.engineApi);
     final body = await _apiService.checkHealth(ApiConfig.bodyApi);
     final vin = await _apiService.checkHealth(ApiConfig.vinApi);
@@ -60,14 +67,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _loadUserName() async {
     final name = await _auth.getUserName();
-    
-    final prefs = await SharedPreferences.getInstance();
-    final picPath = prefs.getString('user_profile_pic');
-    
+    final pic = await _auth.getProfilePicPath();
+
     if (mounted) {
       setState(() {
         _userName = name;
-        _profilePicPath = picPath;
+        _profilePicPath = pic;
       });
     }
   }
@@ -76,17 +81,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final bool? confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.darkNavySurface,
-        title: const Text("Logout", style: TextStyle(color: Colors.white)),
+        title: const Text("Logout", style: TextStyle(color: AppColors.textWhite)),
         content: const Text("Are you sure you want to logout?", style: TextStyle(color: AppColors.textGray)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text("Cancel", style: TextStyle(color: Colors.white70)),
+            child: const Text("Cancel", style: TextStyle(color: AppColors.textGray)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text("Logout", style: TextStyle(color: Colors.redAccent)),
+            child: const Text("Logout", style: TextStyle(color: AppColors.statusRed)),
           ),
         ],
       ),
@@ -102,11 +106,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final allServicesOnline = _apiStatus.values.every((online) => online);
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) async {
         if (didPop) return;
-        
+
         final now = DateTime.now();
         final backButtonHasNotBeenPressedOrSnackBarHasBeenClosed =
             _lastPressedAt == null || now.difference(_lastPressedAt!) > const Duration(seconds: 2);
@@ -119,216 +125,320 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       },
       child: Scaffold(
-      backgroundColor: AppColors.darkNavyBg,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            // Custom Header with Wave and Profile info
-            WaveHeader(
-              height: 120,
-              child: Column(
-                children: [
-                  // Profile & Logout Actions Row
-                  Padding(
-                    padding: const EdgeInsets.only(top: 35, right: 16, left: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.logout, color: AppColors.textDark, size: 20),
-                          onPressed: _handleLogout,
-                        ),
-                        GestureDetector(
-                          onTap: () async {
-                            await Navigator.pushNamed(context, '/profile');
-                            _loadUserName(); // Refresh name and picture when returning
-                          },
-                          child: Row(
-                            children: [
-                              CircleAvatar(
-                                radius: 18,
-                                backgroundColor: Colors.white24,
-                                backgroundImage: (_profilePicPath != null && File(_profilePicPath!).existsSync())
-                                    ? FileImage(File(_profilePicPath!))
-                                    : null,
-                                child: (_profilePicPath == null || !File(_profilePicPath!).existsSync())
-                                    ? const Icon(Icons.person, color: AppColors.textDark, size: 20)
-                                    : null,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                "Hi, $_userName",
-                                style: const TextStyle(
-                                  color: AppColors.textDark,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            
-            // Search Bar Section
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: "Enter Vehicle Reg No",
-                        hintStyle: const TextStyle(color: AppColors.textGray, fontSize: 14),
-                        filled: true,
-                        fillColor: const Color(0xFF1A2035),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        backgroundColor: AppColors.darkNavyBg,
+        body: SingleChildScrollView(
+          child: Column(
+            children: [
+              WaveHeader(
+                height: 140,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 35, right: 16, left: 16),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.logout, color: AppColors.textDark, size: 20),
+                        onPressed: _handleLogout,
                       ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  SizedBox(
-                    width: 90,
-                    height: 48,
-                    child: ElevatedButton(
-                      onPressed: () {},
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryBlue,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        elevation: 0,
-                      ),
-                      child: const Text(
-                        "Search",
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            // API Status Row
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _statusDot('Engine', _apiStatus['engine']!),
-                  _statusDot('Body', _apiStatus['body']!),
-                  _statusDot('VIN', _apiStatus['vin']!),
-                  _statusDot('Valuation', _apiStatus['valuation']!),
-                ],
-              ),
-            ),
-            
-            // Inspection Heading
-            const Padding(
-              padding: EdgeInsets.only(top: 10, bottom: 20),
-              child: Text(
-                "Let's inspect your vehicle",
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-            
-            // Start Button
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 40),
-              child: CustomButton(
-                text: "Start",
-                onPressed: () => Navigator.pushNamed(context, '/inspection/info'),
-              ),
-            ),
-            
-            const SizedBox(height: 40),
-            
-            // Recent Inspections List
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Recent Inspections",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _inspections.length,
-                    itemBuilder: (context, index) {
-                      final inspection = _inspections[index];
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1A2035),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                      GestureDetector(
+                        onTap: () async {
+                          await Navigator.pushNamed(context, '/profile');
+                          _loadUserName();
+                        },
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  inspection["model"]!,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  inspection["date"]!,
-                                  style: const TextStyle(
-                                    color: AppColors.textGray,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
+                            CircleAvatar(
+                              radius: 18,
+                              backgroundColor: Colors.white24,
+                              backgroundImage: (_profilePicPath != null && File(_profilePicPath!).existsSync())
+                                  ? FileImage(File(_profilePicPath!))
+                                  : null,
+                              child: (_profilePicPath == null || !File(_profilePicPath!).existsSync())
+                                  ? const Icon(Icons.person, color: AppColors.textDark, size: 20)
+                                  : null,
                             ),
+                            const SizedBox(width: 8),
                             Text(
-                              inspection["reg"]!,
+                              "Hi, $_userName",
                               style: const TextStyle(
-                                color: AppColors.textGray,
+                                color: AppColors.textDark,
                                 fontSize: 13,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
                         ),
-                      );
-                    },
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-            const SizedBox(height: 20),
-          ],
+
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          allServicesOnline ? Icons.check_circle : Icons.info_outline,
+                          size: 14,
+                          color: allServicesOnline ? AppColors.statusGreen : AppColors.statusAmber,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          allServicesOnline ? "All systems ready" : "Some services are still starting",
+                          style: TextStyle(
+                            color: allServicesOnline ? AppColors.statusGreen : AppColors.statusAmber,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _statusDot('Engine', _apiStatus['engine']!),
+                        _statusDot('Body', _apiStatus['body']!),
+                        _statusDot('VIN', _apiStatus['vin']!),
+                        _statusDot('Valuation', _apiStatus['valuation']!),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const Padding(
+                padding: EdgeInsets.only(top: 28, bottom: 16),
+                child: Text(
+                  "Let's inspect your vehicle",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textWhite,
+                  ),
+                ),
+              ),
+
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40),
+                child: CustomButton(
+                  text: "Start Inspection",
+                  onPressed: () => Navigator.pushNamed(context, '/inspection/info'),
+                ),
+              ),
+
+              const SizedBox(height: 40),
+
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          "Recent Inspections",
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textWhite,
+                          ),
+                        ),
+                        if (_recentInspections.isNotEmpty)
+                          TextButton(
+                            onPressed: _handleClearHistory,
+                            style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                            child: const Text(
+                              "Clear",
+                              style: TextStyle(color: AppColors.textGray, fontSize: 12),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    if (_recentInspections.isEmpty)
+                      AppCard(
+                        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
+                        child: Column(
+                          children: [
+                            const Icon(Icons.history, color: AppColors.textGray, size: 32),
+                            const SizedBox(height: 12),
+                            const Text(
+                              "No inspections yet",
+                              style: TextStyle(color: AppColors.textWhite, fontWeight: FontWeight.w600, fontSize: 14),
+                            ),
+                            const SizedBox(height: 4),
+                            const Text(
+                              "Completed inspections will show up here",
+                              style: TextStyle(color: AppColors.textGray, fontSize: 12),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      ..._recentInspections.map(_buildInspectionCard),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
+          ),
         ),
       ),
-    ),
+    );
+  }
+
+  Future<void> _handleClearHistory() async {
+    final bool? confirm = await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Clear History", style: TextStyle(color: AppColors.textWhite)),
+        content: const Text(
+          "This will remove all saved inspection results from this device.",
+          style: TextStyle(color: AppColors.textGray),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text("Cancel", style: TextStyle(color: AppColors.textGray)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text("Clear", style: TextStyle(color: AppColors.statusRed)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _historyService.clearHistory();
+      if (mounted) setState(() => _recentInspections = []);
+    }
+  }
+
+  Color _verdictColor(String verdict) {
+    if (verdict == 'OVERPRICED' || verdict == 'DO_NOT_BUY') return AppColors.statusRed;
+    if (verdict == 'GOOD_DEAL') return AppColors.statusGreen;
+    return AppColors.primaryBlue;
+  }
+
+  String _formatDate(DateTime date) {
+    const months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    ];
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
+  }
+
+  Widget _buildInspectionCard(InspectionRecord record) {
+    final title = [record.make, record.model].where((s) => s.isNotEmpty).join(' ');
+    final verdictColor = _verdictColor(record.verdict);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: GestureDetector(
+        onTap: () => _showInspectionDetail(record),
+        child: AppCard(
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title.isEmpty ? "Vehicle Inspection" : title,
+                      style: const TextStyle(color: AppColors.textWhite, fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _formatDate(record.date),
+                      style: const TextStyle(color: AppColors.textGray, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    "LKR ${record.fairValueMillion.toStringAsFixed(2)}M",
+                    style: const TextStyle(color: AppColors.textWhite, fontWeight: FontWeight.bold, fontSize: 14),
+                  ),
+                  const SizedBox(height: 4),
+                  if (record.verdict.isNotEmpty)
+                    Text(
+                      record.verdict.replaceAll('_', ' '),
+                      style: TextStyle(color: verdictColor, fontSize: 11, fontWeight: FontWeight.w600),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showInspectionDetail(InspectionRecord record) {
+    final title = [record.make, record.model].where((s) => s.isNotEmpty).join(' ');
+    showResultSheet(
+      context,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title.isEmpty ? "Vehicle Inspection" : title,
+            style: const TextStyle(color: AppColors.textWhite, fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _formatDate(record.date),
+            style: const TextStyle(color: AppColors.textGray, fontSize: 12),
+          ),
+          const SizedBox(height: 16),
+          Center(
+            child: Text(
+              "LKR ${record.fairValueMillion.toStringAsFixed(2)}M",
+              style: const TextStyle(color: AppColors.textWhite, fontSize: 28, fontWeight: FontWeight.bold),
+            ),
+          ),
+          Center(
+            child: Text(
+              "Range LKR ${record.rangeMinMillion.toStringAsFixed(2)}M – LKR ${record.rangeMaxMillion.toStringAsFixed(2)}M",
+              style: const TextStyle(color: AppColors.textGray, fontSize: 12),
+            ),
+          ),
+          const SizedBox(height: 20),
+          _detailRow("VIN Condition", record.vinCondition),
+          _detailRow("Body Condition", "${record.bodyConditionScore.toInt()}%"),
+          _detailRow("Engine Condition", "${record.engineConditionScore.toInt()}%"),
+          if (record.verdict.isNotEmpty)
+            _detailRow("Verdict", record.verdict.replaceAll('_', ' ')),
+        ],
+      ),
+      ctaLabel: 'Close',
+      onCta: () => Navigator.pop(context),
+    );
+  }
+
+  Widget _detailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: AppColors.textGray, fontSize: 13)),
+          Text(value, style: const TextStyle(color: AppColors.textWhite, fontSize: 13, fontWeight: FontWeight.w600)),
+        ],
+      ),
     );
   }
 
@@ -341,11 +451,11 @@ class _HomeScreenState extends State<HomeScreen> {
           height: 8,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: isOnline ? const Color(0xFF00E676) : const Color(0xFFFF1744),
+            color: isOnline ? AppColors.statusGreen : AppColors.statusRed,
           ),
         ),
         const SizedBox(width: 4),
-        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 10)),
+        Text(label, style: const TextStyle(color: AppColors.textGray, fontSize: 10)),
       ],
     );
   }
