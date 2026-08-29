@@ -7,6 +7,11 @@
 **/.flutter-plugins-dependencies
 **/generated_plugin_registrant.dart
 
+# Android / Gradle / Kotlin build caches
+**/.gradle/
+**/.kotlin/
+**/android/local.properties
+
 # Python / Environments
 **/venv/
 **/.venv/

@@ -43,7 +43,7 @@ class ProgressStepper extends StatelessWidget {
                       margin: const EdgeInsets.only(bottom: 14), // Align with circles
                       color: index < currentStep 
                           ? AppColors.primaryBlue 
-                          : AppColors.textGray.withOpacity(0.3),
+                          : AppColors.textGray.withValues(alpha: 0.3),
                     ),
                   ),
               ],

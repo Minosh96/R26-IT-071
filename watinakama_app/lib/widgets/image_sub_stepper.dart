@@ -21,7 +21,7 @@ class ImageSubStepper extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFF1A2035),
+        color: AppColors.darkNavySurface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
@@ -36,27 +36,27 @@ class ImageSubStepper extends StatelessWidget {
           Color labelColor;
 
           if (isCaptured) {
-            boxColor = const Color(0xFF1A3A2A);
+            boxColor = AppColors.statusGreenBg;
             boxBorder = Border.all(
-              color: isCurrent ? AppColors.primaryBlue : AppColors.statusGreen, 
+              color: isCurrent ? AppColors.primaryBlue : AppColors.statusGreen,
               width: 2,
             );
             boxChild = const Icon(Icons.check, color: AppColors.statusGreen, size: 20);
             labelColor = isCurrent ? AppColors.primaryBlue : AppColors.statusGreen;
           } else if (isCurrent) {
-            boxColor = const Color(0xFF1A2A3A);
+            boxColor = AppColors.primaryBlueMuted;
             boxBorder = Border.all(color: AppColors.primaryBlue, width: 2);
             boxChild = const Text(
               "...",
               style: TextStyle(
-                color: Colors.white,
+                color: AppColors.primaryBlue,
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
               ),
             );
             labelColor = AppColors.primaryBlue;
           } else {
-            boxColor = const Color(0xFF1A2035);
+            boxColor = AppColors.darkNavyCard;
             boxBorder = Border.all(color: AppColors.textFieldBorder, width: 1);
             boxChild = null;
             labelColor = AppColors.textGray;

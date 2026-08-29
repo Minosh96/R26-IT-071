@@ -49,6 +49,7 @@ dependencies:
   record: ^6.1.1
   just_audio: ^0.9.38
   file_picker: ^8.0.0
+  image_cropper: ^8.0.2
 
   # The following adds the Cupertino Icons font to your application.
 

@@ -9,7 +9,6 @@ import 'screens/forgot_password_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/inspection/vehicle_info_screen.dart';
 import 'screens/inspection/audio_recording_screen.dart';
-import 'screens/inspection/vehicle_images_screen.dart';
 import 'screens/inspection/body_images_screen.dart';
 import 'screens/inspection/vin_scan_screen.dart';
 import 'screens/inspection/results_screen.dart';
@@ -30,17 +29,41 @@ class WatinakamaApp extends StatelessWidget {
       title: 'වටිනාකම.LK',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        brightness: Brightness.dark,
+        brightness: Brightness.light,
         scaffoldBackgroundColor: AppColors.darkNavyBg,
         textTheme: GoogleFonts.interTextTheme(
-          ThemeData.dark().textTheme
+          ThemeData.light().textTheme
         ).apply(
+          bodyColor: AppColors.textWhite,
+          displayColor: AppColors.textWhite,
           fontFamily: 'Noto Sans Sinhala',
         ),
-        colorScheme: ColorScheme.dark(
+        colorScheme: ColorScheme.light(
           primary: AppColors.primaryBlue,
           surface: AppColors.darkNavySurface,
           secondary: AppColors.linkBlue,
+          error: AppColors.statusRed,
+        ),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          surfaceTintColor: Colors.transparent,
+        ),
+        dialogTheme: DialogThemeData(
+          backgroundColor: AppColors.darkNavySurface,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+        bottomSheetTheme: const BottomSheetThemeData(
+          backgroundColor: AppColors.darkNavySurface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+        ),
+        snackBarTheme: SnackBarThemeData(
+          backgroundColor: const Color(0xFF262A33),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          contentTextStyle: const TextStyle(color: Colors.white, fontSize: 13),
         ),
       ),
       initialRoute: '/splash',
