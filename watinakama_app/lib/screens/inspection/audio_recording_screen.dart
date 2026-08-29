@@ -42,7 +42,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
   String? _audioFilePath;
 
   // Recording phases
-  Map<String, String> _phaseStatus = {
+  final Map<String, String> _phaseStatus = {
     'engine_start': 'pending',
     'idle': 'pending',
     'acceleration': 'pending',

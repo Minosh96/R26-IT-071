@@ -41,7 +41,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _checkApiStatus();
   }
 
-  _checkApiStatus() async {
+  Future<void> _checkApiStatus() async {
     final engine = await _apiService.checkHealth(ApiConfig.engineApi);
     final body = await _apiService.checkHealth(ApiConfig.bodyApi);
     final vin = await _apiService.checkHealth(ApiConfig.vinApi);

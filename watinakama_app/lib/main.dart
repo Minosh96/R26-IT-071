@@ -9,7 +9,6 @@ import 'screens/forgot_password_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/inspection/vehicle_info_screen.dart';
 import 'screens/inspection/audio_recording_screen.dart';
-import 'screens/inspection/vehicle_images_screen.dart';
 import 'screens/inspection/body_images_screen.dart';
 import 'screens/inspection/vin_scan_screen.dart';
 import 'screens/inspection/results_screen.dart';

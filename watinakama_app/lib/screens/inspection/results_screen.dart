@@ -1,12 +1,9 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import '../../constants/app_colors.dart';
 import '../../widgets/inspection_app_bar.dart';
 import '../../widgets/progress_stepper.dart';
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
-import 'dart:io';
 
 class ResultsScreen extends StatefulWidget {
   const ResultsScreen({super.key});
@@ -18,7 +15,7 @@ class ResultsScreen extends StatefulWidget {
 class _ResultsScreenState extends State<ResultsScreen> {
   Map<String, dynamic> _vehicleData = {};
   // ignore: unused_field
-  Map<String, dynamic> _valuationResult = {};
+  final Map<String, dynamic> _valuationResult = {};
   bool _isLoading = true;
   String _userName = '';
   String? _profilePicPath;

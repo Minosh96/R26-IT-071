@@ -8,7 +8,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../constants/app_colors.dart';
 import '../widgets/wave_header.dart';
-import '../widgets/custom_text_field.dart';
 import '../widgets/custom_button.dart';
 import '../services/auth_service.dart';
 import '../services/biometric_service.dart';
@@ -383,7 +382,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           Switch(
                             value: _isBioEnabled,
-                            activeColor: AppColors.primaryBlue,
+                            activeThumbColor: AppColors.primaryBlue,
                             onChanged: (value) async {
                               await _bio.setEnabled(value);
                               setState(() => _isBioEnabled = value);

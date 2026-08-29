@@ -255,14 +255,7 @@ class _VinScanScreenState extends State<VinScanScreen> {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          TextSpan(text: " or "),
-                          TextSpan(
-                            text: "Engine Number",
-                            style: TextStyle(
-                              color: Color(0xFFFF8C00),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+
                           TextSpan(
                             text: " within the frame to scan automatically.",
                           ),

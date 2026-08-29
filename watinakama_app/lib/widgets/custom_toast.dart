@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../constants/app_colors.dart';
 
 class CustomToast extends StatefulWidget {
   final String message;
