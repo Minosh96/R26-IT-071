@@ -9,6 +9,8 @@ class CustomTextField extends StatefulWidget {
   final String? prefixText; // for +94 phone prefix
   final Widget? prefixWidget; // for dropdown prefix
   final String? hint;
+  final bool enabled;
+  final IconData? suffixIcon;
 
   const CustomTextField({
     super.key,
@@ -19,6 +21,8 @@ class CustomTextField extends StatefulWidget {
     this.prefixText,
     this.prefixWidget,
     this.hint,
+    this.enabled = true,
+    this.suffixIcon,
   });
 
   @override
@@ -55,7 +59,7 @@ class _CustomTextFieldState extends State<CustomTextField> {
         // TextField Container
         Container(
           decoration: BoxDecoration(
-            color: AppColors.darkNavyCard,
+            color: widget.enabled ? AppColors.darkNavyCard : AppColors.darkNavyCard.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(8),
             border: Border.all(
               color: AppColors.textFieldBorder,
@@ -82,7 +86,7 @@ class _CustomTextFieldState extends State<CustomTextField> {
                   child: Text(
                     widget.prefixText!,
                     style: const TextStyle(
-                      color: Colors.white,
+                      color: AppColors.textWhite,
                       fontSize: 14,
                     ),
                   ),
@@ -99,10 +103,11 @@ class _CustomTextFieldState extends State<CustomTextField> {
               Expanded(
                 child: TextField(
                   controller: widget.controller,
+                  enabled: widget.enabled,
                   obscureText: widget.isPassword ? _obscureText : false,
                   keyboardType: widget.keyboardType,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: widget.enabled ? AppColors.textWhite : AppColors.textGray,
                     fontSize: 14,
                   ),
                   decoration: InputDecoration(
@@ -123,6 +128,13 @@ class _CustomTextFieldState extends State<CustomTextField> {
                   ),
                 ),
               ),
+
+              // Suffix Icon (e.g. lock for disabled fields)
+              if (widget.suffixIcon != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: Icon(widget.suffixIcon, color: AppColors.textGray, size: 18),
+                ),
 
               // Password Toggle Icon
               if (widget.isPassword)
