@@ -2,12 +2,16 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import '../../constants/app_colors.dart';
 import '../../widgets/inspection_app_bar.dart';
 import '../../widgets/progress_stepper.dart';
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../widgets/loading_overlay.dart';
+import '../../widgets/custom_toast.dart';
+import '../../widgets/result_sheet.dart';
+import '../../widgets/nav_button_row.dart';
 
 class VinScanScreen extends StatefulWidget {
   const VinScanScreen({super.key});
@@ -72,17 +76,49 @@ class _VinScanScreenState extends State<VinScanScreen> {
     final picker = ImagePicker();
     final photo = await picker.pickImage(source: ImageSource.gallery);
     if (photo != null) {
+      final croppedPath = await _cropImage(photo.path);
+      if (croppedPath == null || !mounted) return;
       setState(() {
-        _capturedImagePath = photo.path;
+        _capturedImagePath = croppedPath;
         _scannedValue = "MANUAL_UPLOAD";
       });
     }
   }
 
+  Future<String?> _cropImage(String sourcePath) async {
+    final cropped = await ImageCropper().cropImage(
+      sourcePath: sourcePath,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Crop VIN Image',
+          toolbarColor: const Color(0xFF0B0F17),
+          toolbarWidgetColor: Colors.white,
+          backgroundColor: const Color(0xFF0B0F17),
+          activeControlsWidgetColor: AppColors.primaryBlue,
+          lockAspectRatio: false,
+        ),
+        IOSUiSettings(
+          title: 'Crop VIN Image',
+        ),
+      ],
+    );
+    return cropped?.path;
+  }
+
   Future<void> _handleAnalyze() async {
+    // TODO: re-enable required-image validation once testing is done.
     if (_capturedImagePath == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please capture or upload VIN image')),
+      Navigator.pushNamed(
+        context,
+        '/inspection/results',
+        arguments: {
+          ..._vehicleData,
+          'vin_status': 'unknown',
+          'vin_image': null,
+          'body_score': _vehicleData['body_score'],
+          'mhs_score': _vehicleData['mhs_score'],
+          'fault_class': _vehicleData['fault_class'],
+        },
       );
       return;
     }
@@ -91,18 +127,16 @@ class _VinScanScreenState extends State<VinScanScreen> {
 
     final result = await _apiService.scanVin(File(_capturedImagePath!));
 
+    if (!mounted) return;
     setState(() {
       _vinResult = result;
       _isAnalyzing = false;
     });
 
-    if (result['status'] == 'error') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Analysis failed: ${result["message"]}'),
-          backgroundColor: Colors.red,
-        ),
-      );
+    if (result['status'] == 'error' || result['status_code'] == 503) {
+      String msg = result['message'] ?? 'VIN analysis failed.';
+      if (result['status_code'] == 503) msg = "VIN models are still loading or missing. Please wait a moment.";
+      ToastService.show(context, msg, isError: true);
     } else {
       _showVinResult(result);
     }
@@ -111,7 +145,7 @@ class _VinScanScreenState extends State<VinScanScreen> {
   void _showVinResult(Map<String, dynamic> result) {
     final prediction =
         (result['label'] ?? result['prediction'] ?? 'unknown').toString().toLowerCase();
-    final confidence = (result['confidence'] ?? 0.0) as double;
+    final confidence = (result['confidence'] ?? 0.0).toDouble();
 
     IconData icon;
     Color color;
@@ -133,77 +167,55 @@ class _VinScanScreenState extends State<VinScanScreen> {
       statusText = "NEEDS REVIEW";
     }
 
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1A2035),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: 64),
+    showResultSheet(
+      context,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, color: color, size: 64),
+          const SizedBox(height: 16),
+          Text(
+            statusText,
+            style: TextStyle(color: color, fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Confidence: ${(confidence * 100).toStringAsFixed(1)}%',
+            style: const TextStyle(color: AppColors.textGray, fontSize: 14),
+          ),
+          if (warning != null) ...[
             const SizedBox(height: 16),
-            Text(
-              statusText,
-              style: TextStyle(
-                  color: color, fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Confidence: ${(confidence * 100).toStringAsFixed(1)}%',
-              style: const TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-            if (warning != null) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  warning,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: color, fontWeight: FontWeight.w500),
-                ),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
               ),
-            ],
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2E7D32),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24)),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                onPressed: () {
-                  Navigator.pop(context); // close bottom sheet
-                  Navigator.pushNamed(
-                    context,
-                    '/inspection/results',
-                    arguments: {
-                      ..._vehicleData,
-                      'vin_status': prediction,
-                      'vin_image': _capturedImagePath,
-                      'body_score': _vehicleData['body_score'],
-                      'mhs_score': _vehicleData['mhs_score'],
-                      'fault_class': _vehicleData['fault_class'],
-                    },
-                  );
-                },
-                child: const Text('View Full Inspection Report',
-                    style: TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold)),
+              child: Text(
+                warning,
+                textAlign: TextAlign.center,
+                style: TextStyle(color: color, fontWeight: FontWeight.w500),
               ),
             ),
           ],
-        ),
+        ],
       ),
+      ctaLabel: 'View Full Inspection Report',
+      onCta: () {
+        Navigator.pop(context); // close bottom sheet
+        Navigator.pushNamed(
+          context,
+          '/inspection/results',
+          arguments: {
+            ..._vehicleData,
+            'vin_status': prediction,
+            'vin_image': _capturedImagePath,
+            'body_score': _vehicleData['body_score'],
+            'mhs_score': _vehicleData['mhs_score'],
+            'fault_class': _vehicleData['fault_class'],
+          },
+        );
+      },
     );
   }
 
@@ -239,7 +251,7 @@ class _VinScanScreenState extends State<VinScanScreen> {
                       style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: AppColors.textWhite,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -275,7 +287,7 @@ class _VinScanScreenState extends State<VinScanScreen> {
                       height: 200,
                       width: double.infinity,
                       decoration: BoxDecoration(
-                        color: const Color(0xFF0D1117),
+                        color: Colors.black,
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Stack(
@@ -306,6 +318,26 @@ class _VinScanScreenState extends State<VinScanScreen> {
                                 },
                               ),
                             ),
+                          if (_capturedImagePath != null)
+                            Positioned(
+                              top: 10,
+                              right: 10,
+                              child: GestureDetector(
+                                onTap: () async {
+                                  final croppedPath = await _cropImage(_capturedImagePath!);
+                                  if (croppedPath == null || !mounted) return;
+                                  setState(() => _capturedImagePath = croppedPath);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(Icons.crop, color: Colors.white, size: 18),
+                                ),
+                              ),
+                            ),
                           // Corner brackets overlay
                           CustomPaint(
                             painter: ScannerOverlayPainter(),
@@ -315,7 +347,7 @@ class _VinScanScreenState extends State<VinScanScreen> {
                           Center(
                             child: Icon(
                               Icons.directions_car_outlined,
-                              color: Colors.white.withOpacity(0.15),
+                              color: Colors.white.withValues(alpha: 0.15),
                               size: 80,
                             ),
                           ),
@@ -330,20 +362,16 @@ class _VinScanScreenState extends State<VinScanScreen> {
                                 Container(
                                   width: 8,
                                   height: 8,
-                                  decoration: BoxDecoration(
+                                  decoration: const BoxDecoration(
                                     shape: BoxShape.circle,
-                                    color: _scannedValue == null
-                                        ? AppColors.statusGreen
-                                        : AppColors.statusGreen,
+                                    color: AppColors.statusGreen,
                                   ),
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
                                   _scannedValue == null ? "SCANNING..." : "DETECTED",
                                   style: TextStyle(
-                                    color: _scannedValue == null
-                                        ? Colors.white
-                                        : AppColors.statusGreen,
+                                    color: _scannedValue == null ? Colors.white : AppColors.statusGreen,
                                     fontSize: 12,
                                     letterSpacing: 1.5,
                                     fontWeight: FontWeight.bold,
@@ -360,9 +388,9 @@ class _VinScanScreenState extends State<VinScanScreen> {
                     Container(
                       padding: const EdgeInsets.all(14),
                       decoration: BoxDecoration(
-                        color: const Color(0xFF2A2000),
+                        color: AppColors.statusAmberBg,
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: const Color(0xFF4A3800)),
+                        border: Border.all(color: AppColors.statusAmber.withValues(alpha: 0.3)),
                       ),
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -370,14 +398,14 @@ class _VinScanScreenState extends State<VinScanScreen> {
                           Container(
                             width: 32,
                             height: 32,
-                            decoration: const BoxDecoration(
+                            decoration: BoxDecoration(
                               shape: BoxShape.circle,
-                              color: Color(0xFF4A3800),
+                              color: AppColors.statusAmber.withValues(alpha: 0.2),
                             ),
                             child: const Center(
                               child: Icon(
                                 Icons.lightbulb_outline,
-                                color: Color(0xFFFFB300),
+                                color: AppColors.statusAmber,
                                 size: 18,
                               ),
                             ),
@@ -390,7 +418,7 @@ class _VinScanScreenState extends State<VinScanScreen> {
                                 Text(
                                   "Better Lighting",
                                   style: TextStyle(
-                                    color: Color(0xFFFFB300),
+                                    color: AppColors.statusAmber,
                                     fontSize: 13,
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -399,7 +427,7 @@ class _VinScanScreenState extends State<VinScanScreen> {
                                 Text(
                                   "Ensure the vehicle numbers are clearly visible and well-lit",
                                   style: TextStyle(
-                                    color: Color(0xFFCCA000),
+                                    color: AppColors.textGray,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -434,7 +462,7 @@ class _VinScanScreenState extends State<VinScanScreen> {
                               shape: BoxShape.circle,
                               color: AppColors.primaryBlue,
                               border: Border.all(
-                                color: Colors.white.withOpacity(0.3),
+                                color: Colors.white.withValues(alpha: 0.3),
                                 width: 3,
                               ),
                             ),
@@ -450,50 +478,11 @@ class _VinScanScreenState extends State<VinScanScreen> {
                     ),
                     const SizedBox(height: 24),
                     // Navigation buttons
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        ElevatedButton(
-                          onPressed: () => Navigator.pop(context),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF1A1A2E),
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(24),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 28,
-                              vertical: 14,
-                            ),
-                          ),
-                          child: const Text("Back"),
-                        ),
-                        ElevatedButton(
-                          onPressed: _isAnalyzing ? null : _handleAnalyze,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2E7D32),
-                            foregroundColor: Colors.white,
-                            disabledBackgroundColor: const Color(0xFF2E7D32).withOpacity(0.6),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(24),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 32,
-                              vertical: 14,
-                            ),
-                          ),
-                          child: _isAnalyzing
-                              ? const SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
-                                )
-                              : const Text("Analyze"),
-                        ),
-                      ],
+                    NavButtonRow(
+                      onBack: () => Navigator.pop(context),
+                      onNext: _isAnalyzing ? null : _handleAnalyze,
+                      nextLabel: "Analyze",
+                      isNextLoading: _isAnalyzing,
                     ),
                   ],
                 ),
@@ -520,11 +509,11 @@ class _VinScanScreenState extends State<VinScanScreen> {
             height: 52,
             decoration: const BoxDecoration(
               shape: BoxShape.circle,
-              color: Color(0xFF1A2035),
+              color: AppColors.darkNavySurface,
             ),
             child: Icon(
               icon,
-              color: isActive ? const Color(0xFFFFB300) : Colors.white,
+              color: isActive ? AppColors.statusAmber : AppColors.textWhite,
               size: 24,
             ),
           ),

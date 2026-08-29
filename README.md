@@ -131,27 +131,4 @@ The frontend of Watinakama.LK is a cross-platform mobile app built with **Flutte
 
 ## How to Run the Project
 
-Watinakama.LK consists of five main parts (4 backends + 1 mobile app). Follow these steps to get the full system running locally.
-
-### Step 1: Environment Setup
-Ensure you have **Python 3.9+** and **Flutter SDK** installed on your system. We recommend using virtual environments for each backend.
-
-### Step 2: Start the Backend Services
-Open four separate terminal windows and run each component:
-
-| Component | Port | Commands to Run |
-| :--- | :--- | :--- |
-| **C1: VIN Auth** | 8000 | `cd component1-vin-authentication` <br> `python -m venv venv` <br> `venv\Scripts\activate` <br> `pip install -r requirements.txt` <br> `uvicorn api.app:app --port 8000` |
-| **C2: Body Analysis** | 8080 | `cd component2-body-condition` <br> `python -m venv venv` <br> `venv\Scripts\activate` <br> `pip install -r requirements.txt` <br> `uvicorn main:app --port 8080` |
-| **C3: Engine Health** | 5003 | `cd component3-engine-audio` <br> `python -m venv venv` <br> `venv\Scripts\activate` <br> `pip install -r requirements.txt` <br> `python api/app.py` |
-| **C4: Valuation** | 5004 | `cd component4-market-valuation` <br> `python -m venv venv` <br> `venv\Scripts\activate` <br> `pip install -r requirements.txt` <br> `python api/app.py` |
-
-### Step 3: Run the Flutter App
-1.  Navigate to the app directory: `cd watinakama_app`.
-2.  Update the **API IP Address**: Open `lib/services/api_service.dart` and change the `baseIp` to your computer's local IP address (e.g., `192.168.1.10`).
-3.  Install dependencies: `flutter pub get`.
-4.  Run the app: `flutter run`.
-
----
-
-**Note:** Each backend includes a **Swagger UI** (e.g., `http://localhost:8000/docs`) where you can test individual API endpoints before using the mobile app.
+See [RUNNING.md](RUNNING.md) for the full setup and run instructions for all four backends and the mobile app.

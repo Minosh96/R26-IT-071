@@ -103,14 +103,15 @@ def get_body_deduction(body_score, repair_costs):
     """
     Map body score to damage category to provide explanation text.
     """
-    if body_score >= 80:
+    if body_score >= 100:
         category = "none"
-    elif body_score >= 60:
+    elif body_score >= 80:
         category = "minor"
-    elif body_score >= 40:
+    elif body_score >= 60:
         category = "moderate"
     else:
         category = "severe"
+
         
     categories = repair_costs.get("body_damage_categories", {})
     cat_data = categories.get(category, categories.get("none"))

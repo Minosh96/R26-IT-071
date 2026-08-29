@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 class ApiConfig {
   // Change this to your PC's IP address when using real device
   // Use 10.0.2.2 for Android emulator
-  static const String baseIp = '172.20.10.2';
+  static const String baseIp = '10.19.92.101';
 
   static const String vinApi = 'http://$baseIp:8000';
   static const String bodyApi = 'http://$baseIp:8080';
@@ -54,6 +54,15 @@ class ApiService {
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
 
+      if (response.statusCode != 200) {
+        String msg = "API returned status code ${response.statusCode}";
+        try {
+          final errBody = jsonDecode(response.body);
+          msg = errBody['detail'] ?? errBody['message'] ?? errBody['error'] ?? msg;
+        } catch (_) {}
+        return {"status": "error", "status_code": response.statusCode, "message": msg};
+      }
+
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
       return {"status": "error", "message": e.toString()};
@@ -78,6 +87,15 @@ class ApiService {
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
 
+      if (response.statusCode != 200) {
+        String msg = "API returned status code ${response.statusCode}";
+        try {
+          final errBody = jsonDecode(response.body);
+          msg = errBody['detail'] ?? errBody['message'] ?? msg;
+        } catch (_) {}
+        return {"status": "error", "status_code": response.statusCode, "message": msg};
+      }
+
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
       return {"status": "error", "message": e.toString()};
@@ -97,6 +115,15 @@ class ApiService {
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
 
+      if (response.statusCode != 200) {
+        String msg = "API returned status code ${response.statusCode}";
+        try {
+          final errBody = jsonDecode(response.body);
+          msg = errBody['detail'] ?? errBody['message'] ?? msg;
+        } catch (_) {}
+        return {"status": "error", "status_code": response.statusCode, "message": msg};
+      }
+
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
       return {"status": "error", "message": e.toString()};
@@ -114,6 +141,15 @@ class ApiService {
         },
         body: jsonEncode(data),
       );
+
+      if (response.statusCode != 200) {
+        String msg = "API returned status code ${response.statusCode}";
+        try {
+          final errBody = jsonDecode(response.body);
+          msg = errBody['detail'] ?? errBody['message'] ?? errBody['error'] ?? msg;
+        } catch (_) {}
+        return {"status": "error", "status_code": response.statusCode, "message": msg};
+      }
 
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {

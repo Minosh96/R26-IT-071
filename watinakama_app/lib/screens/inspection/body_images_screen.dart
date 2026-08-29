@@ -8,6 +8,9 @@ import '../../widgets/image_sub_stepper.dart';
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
 import '../../widgets/loading_overlay.dart';
+import '../../widgets/custom_toast.dart';
+import '../../widgets/result_sheet.dart';
+import '../../widgets/nav_button_row.dart';
 
 class BodyImagesScreen extends StatefulWidget {
   const BodyImagesScreen({super.key});
@@ -80,18 +83,28 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
   }
 
   Future<void> _handleNext() async {
-    if (!_allCaptured) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please capture all 5 angles')),
+    // TODO: re-enable required-angles validation once testing is done.
+    final images = _capturedPaths.where((p) => p != null).map((p) => File(p!)).toList();
+
+    if (images.isEmpty) {
+      Navigator.pushNamed(
+        context,
+        '/inspection/vin',
+        arguments: {
+          ..._vehicleData,
+          'body_score': null,
+          'body_images': _capturedPaths,
+          'body_damages': const [],
+        },
       );
       return;
     }
 
     setState(() => _isAnalyzing = true);
 
-    final images = _capturedPaths.map((p) => File(p!)).toList();
     final result = await _apiService.analyzeBody(images);
 
+    if (!mounted) return;
     setState(() {
       _bodyResult = result;
       _isAnalyzing = false;
@@ -100,10 +113,7 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
     if (result['status'] == 'error' || result['status_code'] == 503) {
       String msg = result['message'] ?? 'Body analysis service is unavailable.';
       if (result['status_code'] == 503) msg = "Body models are still loading or missing. Please wait a moment.";
-      
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg), backgroundColor: Colors.red),
-      );
+      ToastService.show(context, msg, isError: true);
       return;
     } else {
       _showBodyResult(result);
@@ -115,103 +125,67 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
     final damages = (result['detected_damage_types'] ?? result['detections'] ?? result['damages'] ?? []) as List;
 
 
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1A2035),
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Padding(
-        padding: EdgeInsets.fromLTRB(
-            24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '${score.toInt()}',
-              style: TextStyle(
-                fontSize: 48,
-                fontWeight: FontWeight.bold,
-                color: _getScoreColor(score),
-              ),
-            ),
-            const Text(
-              'Body Condition Score',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-            const SizedBox(height: 20),
-            // Progress bar
-            ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: LinearProgressIndicator(
-                value: score / 100,
-                backgroundColor: Colors.white10,
-                color: _getScoreColor(score),
-                minHeight: 10,
-              ),
-            ),
-            const SizedBox(height: 24),
-            if (damages.isNotEmpty) ...[
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Detected Issues:',
-                    style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(height: 12),
-              ...damages.map((d) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.warning_amber_rounded,
-                            color: Colors.redAccent, size: 18),
-                        const SizedBox(width: 10),
-                        Text(d.toString(),
-                            style: const TextStyle(color: Colors.grey)),
-                      ],
-                    ),
-                  )),
-            ] else
-              const Text('No significant body damage detected.',
-                  style: TextStyle(color: AppColors.statusGreen)),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2E7D32),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24)),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                onPressed: () {
-                  Navigator.pop(context); // close bottom sheet
-                  Navigator.pushNamed(
-                    context,
-                    '/inspection/vin',
-                    arguments: {
-                      ..._vehicleData,
-                      'body_score': score,
-                      'body_images': _capturedPaths,
-                      'body_damages': damages,
-                    },
-                  );
-                },
-                child: const Text('Continue to VIN Scan',
-                    style: TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+    final color = AppColors.statusColorFor(score);
 
-  Color _getScoreColor(double score) {
-    if (score >= 80) return const Color(0xFF00E676);
-    if (score >= 50) return const Color(0xFFFFB300);
-    return const Color(0xFFFF1744);
+    showResultSheet(
+      context,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '${score.toInt()}',
+            style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold, color: color),
+          ),
+          const Text(
+            'Body Condition Score',
+            style: TextStyle(color: AppColors.textGray, fontSize: 14),
+          ),
+          const SizedBox(height: 20),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+              value: score / 100,
+              backgroundColor: Colors.black12,
+              color: color,
+              minHeight: 10,
+            ),
+          ),
+          const SizedBox(height: 24),
+          if (damages.isNotEmpty) ...[
+            const Align(
+              alignment: Alignment.centerLeft,
+              child: Text('Detected Issues:', style: TextStyle(color: AppColors.textWhite, fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(height: 12),
+            ...damages.map((d) => Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, color: AppColors.statusRed, size: 18),
+                      const SizedBox(width: 10),
+                      Text(d.toString(), style: const TextStyle(color: AppColors.textGray)),
+                    ],
+                  ),
+                )),
+          ] else
+            const Text('No significant body damage detected.', style: TextStyle(color: AppColors.statusGreen)),
+        ],
+      ),
+      ctaLabel: 'Continue to VIN Scan',
+      onCta: () {
+        Navigator.pop(context); // close bottom sheet
+        Navigator.pushNamed(
+          context,
+          '/inspection/vin',
+          arguments: {
+            ..._vehicleData,
+            'body_score': score,
+            'body_images': _capturedPaths,
+            'body_damages': damages,
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -255,7 +229,7 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
               _capturedPaths[_currentAngle] == null 
                   ? "Capture the $_currentAngleName view" 
                   : "$_currentAngleName view captured",
-              style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+              style: const TextStyle(color: AppColors.textWhite, fontSize: 16, fontWeight: FontWeight.bold),
             ),
             
             const SizedBox(height: 16),
@@ -267,9 +241,9 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
                 child: Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF0D1117),
+                    color: AppColors.darkNavySurface,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.white10),
+                    border: Border.all(color: AppColors.textFieldBorder),
                   ),
                   child: _capturedPaths[_currentAngle] != null
                       ? Stack(
@@ -341,38 +315,9 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
             // Navigation buttons
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF1A1A2E),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                    ),
-                    child: const Text("Back"),
-                  ),
-                  ElevatedButton(
-                    onPressed: _handleNext,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2E7D32),
-                      foregroundColor: Colors.white,
-                      disabledBackgroundColor: const Color(0xFF2E7D32).withOpacity(0.6),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                    ),
-                    child: const Text(
-                      "Next",
-                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
-                  ),
-                ],
+              child: NavButtonRow(
+                onBack: () => Navigator.pop(context),
+                onNext: _handleNext,
               ),
             ),
           ],
@@ -396,15 +341,15 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
             height: isCamera ? 64 : 52,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: isCamera ? AppColors.primaryBlue : const Color(0xFF1A2035),
+              color: isCamera ? AppColors.primaryBlue : AppColors.darkNavySurface,
               border: isCamera ? Border.all(
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha: 0.3),
                 width: 3,
               ) : null,
             ),
             child: Icon(
               icon,
-              color: Colors.white,
+              color: isCamera ? Colors.white : AppColors.textWhite,
               size: isCamera ? 30 : 24,
             ),
           ),
