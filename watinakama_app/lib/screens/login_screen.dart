@@ -98,7 +98,7 @@ class _LoginScreenState extends State<LoginScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.darkNavySurface,
-        title: const Text("Enable Biometrics", style: TextStyle(color: Colors.white)),
+        title: const Text("Enable Biometrics", style: TextStyle(color: AppColors.textWhite)),
         content: const Text(
           "Would you like to enable fingerprint/face login for future sessions?",
           style: TextStyle(color: AppColors.textGray),
@@ -106,7 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("No", style: TextStyle(color: Colors.white70)),
+            child: const Text("No", style: TextStyle(color: AppColors.textGray)),
           ),
           TextButton(
             onPressed: () async {
@@ -150,7 +150,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: AppColors.textWhite,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -258,10 +258,10 @@ class _LoginScreenState extends State<LoginScreen> {
         height: 54,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white24, width: 1),
+          border: Border.all(color: AppColors.textFieldBorder, width: 1),
         ),
         child: Center(
-          child: Icon(icon, size: 28, color: Colors.white),
+          child: Icon(icon, size: 28, color: AppColors.textWhite),
         ),
       ),
     );

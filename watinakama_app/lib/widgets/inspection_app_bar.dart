@@ -34,7 +34,7 @@ class InspectionAppBar extends StatelessWidget implements PreferredSizeWidget {
           child: const Center(
             child: Icon(
               Icons.arrow_back,
-              color: AppColors.darkNavyBg,
+              color: AppColors.textWhite,
               size: 18,
             ),
           ),

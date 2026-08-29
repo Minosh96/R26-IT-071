@@ -11,24 +11,18 @@ class WaveHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // Bottom layer: Light blue background
+        // Bottom layer: Light blue background with a straight bottom edge
         Container(
           height: height,
           width: double.infinity,
-          color: AppColors.lightBlueTop,
-        ),
-        
-        // Middle layer: Custom wave transition to dark navy (only at the bottom)
-        Positioned(
-          bottom: 0,
-          left: 0,
-          right: 0,
-          child: CustomPaint(
-            size: const Size(double.infinity, 80), // Keep the wave height controlled
-            painter: HeaderWavePainter(color: AppColors.darkNavyBg),
+          decoration: const BoxDecoration(
+            color: AppColors.lightBlueTop,
+            border: Border(
+              bottom: BorderSide(color: AppColors.darkNavyBg, width: 2),
+            ),
           ),
         ),
-        
+
         // Top layer: Content
         SizedBox(
           height: height,
@@ -65,37 +59,4 @@ class WaveHeader extends StatelessWidget {
       ],
     );
   }
-}
-
-class HeaderWavePainter extends CustomPainter {
-  final Color color;
-  HeaderWavePainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-
-    final path = Path();
-    // Start at bottom left
-    path.moveTo(0, size.height);
-    // Curve start
-    path.lineTo(0, size.height * 0.4);
-    
-    // Refined smooth S-curve transition (more subtle)
-    path.cubicTo(
-      size.width * 0.3, size.height * 0.2, // Start slightly lower
-      size.width * 0.6, size.height * 0.8, // End slightly higher
-      size.width, size.height * 0.3,
-    );
-    
-    path.lineTo(size.width, size.height);
-    path.close();
-
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

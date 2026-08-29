@@ -96,7 +96,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: AppColors.textWhite,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -145,7 +145,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         child: const Center(
                           child: Text(
                             "+94",
-                            style: TextStyle(color: Colors.white, fontSize: 14),
+                            style: TextStyle(color: AppColors.textWhite, fontSize: 14),
                           ),
                         ),
                       ),

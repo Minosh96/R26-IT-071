@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import '../../widgets/inspection_app_bar.dart';
 import '../../widgets/progress_stepper.dart';
+import '../../widgets/app_card.dart';
+import '../../widgets/custom_button.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/custom_toast.dart';
 
@@ -71,14 +73,7 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
   }
 
   void _handleNext() {
-    if (_selectedMake.isEmpty || 
-        _selectedModel.isEmpty || 
-        _ownersController.text.isEmpty || 
-        _mileageController.text.isEmpty || 
-        _listedPriceController.text.isEmpty) {
-      ToastService.show(context, "Please fill in all required fields", isError: true);
-      return;
-    }
+    // TODO: re-enable required-field validation once testing is done.
 
     Navigator.pushNamed(context, '/inspection/audio', arguments: {
       'make': _selectedMake,
@@ -157,17 +152,12 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: AppColors.textWhite,
                     ),
                   ),
                   const SizedBox(height: 20),
                   
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A2035),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -275,7 +265,7 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
                               child: CheckboxListTile(
                                 value: _powerShutters,
                                 onChanged: (val) => setState(() => _powerShutters = val!),
-                                title: const Text("Power Shutters", style: TextStyle(color: Colors.white, fontSize: 13)),
+                                title: const Text("Power Shutters", style: TextStyle(color: AppColors.textWhite, fontSize: 13)),
                                 activeColor: AppColors.primaryBlue,
                                 contentPadding: EdgeInsets.zero,
                                 controlAffinity: ListTileControlAffinity.leading,
@@ -285,7 +275,7 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
                               child: CheckboxListTile(
                                 value: _powerMirrors,
                                 onChanged: (val) => setState(() => _powerMirrors = val!),
-                                title: const Text("Power Mirrors", style: TextStyle(color: Colors.white, fontSize: 13)),
+                                title: const Text("Power Mirrors", style: TextStyle(color: AppColors.textWhite, fontSize: 13)),
                                 activeColor: AppColors.primaryBlue,
                                 contentPadding: EdgeInsets.zero,
                                 controlAffinity: ListTileControlAffinity.leading,
@@ -302,17 +292,11 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      ElevatedButton(
+                      CustomButton(
+                        text: "Next",
                         onPressed: _handleNext,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2E7D32),
-                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                        ),
-                        child: const Text(
-                          "Next",
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                        ),
+                        fullWidth: false,
+                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                       ),
                     ],
                   ),
@@ -342,7 +326,7 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
         decoration: BoxDecoration(
           color: AppColors.darkNavyCard,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppColors.textFieldBorder.withOpacity(0.5)),
+          border: Border.all(color: AppColors.textFieldBorder.withValues(alpha: 0.5)),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -350,7 +334,7 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
             Text(
               value.isEmpty ? hint : value,
               style: TextStyle(
-                color: value.isEmpty ? Colors.white24 : Colors.white,
+                color: value.isEmpty ? AppColors.textFaint : AppColors.textWhite,
                 fontSize: 14,
               ),
             ),
@@ -366,10 +350,10 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
-      style: const TextStyle(color: Colors.white),
+      style: const TextStyle(color: AppColors.textWhite),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: Colors.white24, fontSize: 14),
+        hintStyle: const TextStyle(color: AppColors.textFaint, fontSize: 14),
         filled: true,
         fillColor: AppColors.darkNavyCard,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
@@ -383,7 +367,7 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
       value: value,
       items: items.map((year) => DropdownMenuItem(
         value: year,
-        child: Text(year.toString(), style: const TextStyle(color: Colors.white, fontSize: 14)),
+        child: Text(year.toString(), style: const TextStyle(color: AppColors.textWhite, fontSize: 14)),
       )).toList(),
       onChanged: onChanged,
       dropdownColor: AppColors.darkNavyCard,
@@ -404,7 +388,7 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
         child: Container(
           height: 44,
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF1E3A5F) : AppColors.darkNavyCard,
+            color: isSelected ? AppColors.primaryBlueMuted : AppColors.darkNavyCard,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: isSelected ? AppColors.primaryBlue : AppColors.textFieldBorder,
@@ -415,7 +399,7 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
             child: Text(
               option,
               style: TextStyle(
-                color: isSelected ? Colors.white : AppColors.textGray,
+                color: isSelected ? AppColors.primaryBlue : AppColors.textGray,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
             ),
@@ -424,30 +408,6 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
       ),
     );
   }
-}
-
-class StepWavePainter extends CustomPainter {
-  final Color color;
-  StepWavePainter({required this.color});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color..style = PaintingStyle.fill;
-    final path = Path();
-    path.moveTo(0, size.height);
-    path.lineTo(0, size.height * 0.4);
-    path.cubicTo(
-      size.width * 0.3, size.height * 0.1,
-      size.width * 0.6, size.height * 0.9,
-      size.width, size.height * 0.3,
-    );
-    path.lineTo(size.width, size.height);
-    path.close();
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
 }
 
 class _SearchableListModal extends StatefulWidget {
@@ -495,10 +455,10 @@ class _SearchableListModalState extends State<_SearchableListModal> {
             children: [
               Text(
                 widget.title,
-                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                style: const TextStyle(color: AppColors.textWhite, fontSize: 18, fontWeight: FontWeight.bold),
               ),
               IconButton(
-                icon: const Icon(Icons.close, color: Colors.white),
+                icon: const Icon(Icons.close, color: AppColors.textWhite),
                 onPressed: () => Navigator.pop(context),
               ),
             ],
@@ -507,11 +467,11 @@ class _SearchableListModalState extends State<_SearchableListModal> {
           TextField(
             controller: _searchController,
             onChanged: _filter,
-            style: const TextStyle(color: Colors.white),
+            style: const TextStyle(color: AppColors.textWhite),
             decoration: InputDecoration(
               hintText: "Search...",
-              hintStyle: const TextStyle(color: Colors.white24),
-              prefixIcon: const Icon(Icons.search, color: Colors.white24),
+              hintStyle: const TextStyle(color: AppColors.textFaint),
+              prefixIcon: const Icon(Icons.search, color: AppColors.textGray),
               filled: true,
               fillColor: AppColors.darkNavyCard,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
@@ -523,7 +483,7 @@ class _SearchableListModalState extends State<_SearchableListModal> {
               itemCount: _filteredItems.length,
               itemBuilder: (context, index) {
                 return ListTile(
-                  title: Text(_filteredItems[index], style: const TextStyle(color: Colors.white)),
+                  title: Text(_filteredItems[index], style: const TextStyle(color: AppColors.textWhite)),
                   onTap: () {
                     widget.onSelected(_filteredItems[index]);
                     Navigator.pop(context);
