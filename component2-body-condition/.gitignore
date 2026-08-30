@@ -1,31 +1,25 @@
-<<<<<<< feature/body-condition-Accuracy-increase
+# Environment & Cache
 .env
-__pycache__/
-*.pyc
-uploads/
-outputs/
-runs/
-
-# Do not push trained model files unless your team specifically wants them
-*.h5
-*.keras
-*.pt
-=======
-# Python
 __pycache__/
 *.py[cod]
 *$py.class
 venv/
-.env
 
-# YOLO / Datasets
+# YOLO & Models
 runs/
 datasets/
 *.pt
+*.keras
+*.h5
+*.npz
+!damage_capped_weights.npz
+!part_only_weights.npz
+
+# App Directories
 outputs/
 uploads/
 
-# OS
+# OS Files
 .DS_Store
 Thumbs.db
->>>>>>> main
+

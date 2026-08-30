@@ -623,9 +623,20 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(
-                                      phase['title'],
-                                      style: const TextStyle(color: AppColors.textWhite, fontWeight: FontWeight.bold, fontSize: 14),
+                                    RichText(
+                                      text: TextSpan(
+                                        children: [
+                                          TextSpan(
+                                            text: phase['title'],
+                                            style: const TextStyle(color: AppColors.textWhite, fontWeight: FontWeight.bold, fontSize: 14),
+                                          ),
+                                          if (phase['subtitle'] != null)
+                                            TextSpan(
+                                              text: " - ${phase['subtitle']}",
+                                              style: const TextStyle(color: AppColors.textGray, fontSize: 13),
+                                            ),
+                                        ],
+                                      ),
                                     ),
                                   ],
                                 ),
