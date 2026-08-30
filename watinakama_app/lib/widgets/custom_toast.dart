@@ -133,13 +133,34 @@ class _CustomToastState extends State<CustomToast> with SingleTickerProviderStat
 }
 
 class ToastService {
+  // Fallback markers/rules for messages that slipped through as raw
+  // exception text instead of a friendly string (see utils/error_messages.dart,
+  // which should be used at the source instead of relying on this net).
+  static const List<String> _technicalMarkers = [
+    'Exception',
+    'PlatformException',
+    'FormatException',
+    'StackTrace',
+    'package:',
+    'at Object.',
+  ];
+
+  static const String _genericErrorMessage = "Something went wrong. Please try again.";
+
+  static String _sanitize(String message, bool isError) {
+    if (!isError) return message;
+    final looksTechnical =
+        _technicalMarkers.any((marker) => message.contains(marker)) || message.length > 160;
+    return looksTechnical ? _genericErrorMessage : message;
+  }
+
   static void show(BuildContext context, String message, {bool isError = false}) {
     final overlay = Overlay.of(context);
     late OverlayEntry entry;
 
     entry = OverlayEntry(
       builder: (context) => CustomToast(
-        message: message,
+        message: _sanitize(message, isError),
         isError: isError,
         onDismiss: () {
           entry.remove();

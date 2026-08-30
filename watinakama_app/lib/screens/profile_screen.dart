@@ -13,6 +13,7 @@ import '../widgets/custom_button.dart';
 import '../widgets/app_card.dart';
 import '../services/biometric_service.dart';
 import '../widgets/custom_toast.dart';
+import '../utils/error_messages.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -132,13 +133,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         Navigator.pop(context);
       }
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'requires-recent-login') {
-        _showError("Please logout and login again before changing password");
-      } else {
-        _showError(e.message ?? "An error occurred");
-      }
+      _showError(firebaseAuthErrorMessage(e));
     } catch (e) {
-      _showError(e.toString());
+      _showError(friendlyErrorMessage(e));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

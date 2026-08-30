@@ -7,6 +7,7 @@ import '../widgets/custom_button.dart';
 import '../services/auth_service.dart';
 import '../services/biometric_service.dart';
 import '../widgets/custom_toast.dart';
+import 'email_verification_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -60,6 +61,13 @@ class _LoginScreenState extends State<LoginScreen> {
           await _showBiometricDialog();
         }
         Navigator.pushReplacementNamed(context, '/home');
+      } else if (result['code'] == 'email-not-verified') {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => EmailVerificationScreen(email: email, password: password),
+          ),
+        );
       } else {
         _showError(result['message']);
       }

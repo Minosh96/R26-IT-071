@@ -32,9 +32,9 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
     _controller.forward().then((value) => _navigateToNext());
   }
 
-  void _navigateToNext() {
+  Future<void> _navigateToNext() async {
+    final isLoggedIn = await _authService.isLoggedIn();
     if (mounted) {
-      final isLoggedIn = _authService.isLoggedIn();
       Navigator.pushReplacementNamed(
         context,
         isLoggedIn ? '/home' : '/login',

@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../utils/error_messages.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -33,7 +34,11 @@ class AuthService {
 
       // Update display name
       await credential.user?.updateDisplayName(fullName);
-      
+
+      // Send verification email; the account stays unverified until the
+      // user opens the link, and login() blocks unverified accounts.
+      await credential.user?.sendEmailVerification();
+
       // Save credentials for biometric login
       await _secureStorage.write(key: 'email', value: email);
       await _secureStorage.write(key: 'password', value: password);
@@ -44,22 +49,12 @@ class AuthService {
 
       return {
         "status": "success",
-        "message": "Account created successfully",
+        "message": "Account created. Check your email to verify your address before logging in.",
       };
     } on FirebaseAuthException catch (e) {
-      String friendlyMessage = "Registration failed. Please try again.";
-      
-      if (e.code == 'email-already-in-use') {
-        friendlyMessage = "This email is already registered";
-      } else if (e.code == 'weak-password') {
-        friendlyMessage = "Password must be at least 6 characters";
-      } else if (e.code == 'invalid-email') {
-        friendlyMessage = "Please enter a valid email address";
-      }
-
-      return {"status": "error", "message": friendlyMessage};
+      return {"status": "error", "message": firebaseAuthErrorMessage(e)};
     } catch (e) {
-      return {"status": "error", "message": e.toString()};
+      return {"status": "error", "message": friendlyErrorMessage(e)};
     }
   }
 
@@ -70,6 +65,19 @@ class AuthService {
         email: email,
         password: password,
       );
+
+      // Refresh the cached user so emailVerified reflects the latest state.
+      await credential.user?.reload();
+      final User? refreshedUser = _auth.currentUser;
+
+      if (refreshedUser != null && !refreshedUser.emailVerified) {
+        await _auth.signOut();
+        return {
+          "status": "error",
+          "code": "email-not-verified",
+          "message": "Please verify your email before logging in. Check your inbox for the verification link.",
+        };
+      }
 
       final String displayName = credential.user?.displayName ?? "User";
       final String userEmail = credential.user?.email ?? email;
@@ -89,19 +97,9 @@ class AuthService {
         "user_name": displayName,
       };
     } on FirebaseAuthException catch (e) {
-      String friendlyMessage = "Login failed. Please check your credentials.";
-
-      if (e.code == 'user-not-found') {
-        friendlyMessage = "No account found with this email";
-      } else if (e.code == 'wrong-password') {
-        friendlyMessage = "Incorrect password";
-      } else if (e.code == 'invalid-credential') {
-        friendlyMessage = "Invalid email or password";
-      }
-
-      return {"status": "error", "message": friendlyMessage};
+      return {"status": "error", "message": firebaseAuthErrorMessage(e)};
     } catch (e) {
-      return {"status": "error", "message": e.toString()};
+      return {"status": "error", "message": friendlyErrorMessage(e)};
     }
   }
 
@@ -114,15 +112,45 @@ class AuthService {
         "message": "Password reset email sent. Check your inbox.",
       };
     } on FirebaseAuthException catch (e) {
-      String friendlyMessage = "Failed to send reset email.";
+      return {"status": "error", "message": firebaseAuthErrorMessage(e)};
+    } catch (e) {
+      return {"status": "error", "message": friendlyErrorMessage(e)};
+    }
+  }
 
-      if (e.code == 'user-not-found') {
-        friendlyMessage = "No account found with this email";
+  /// Resend the verification email for an account that hasn't logged in yet.
+  /// Signs in briefly (login() already signs unverified users back out),
+  /// re-sends the email if still unverified, then signs out again.
+  Future<Map<String, dynamic>> resendVerificationEmail(String email, String password) async {
+    try {
+      UserCredential credential = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+
+      await credential.user?.reload();
+      final User? user = _auth.currentUser;
+
+      if (user == null) {
+        return {"status": "error", "message": "Could not verify account. Please try again."};
       }
 
-      return {"status": "error", "message": friendlyMessage};
+      if (user.emailVerified) {
+        await _auth.signOut();
+        return {"status": "error", "message": "This email is already verified. You can log in."};
+      }
+
+      await user.sendEmailVerification();
+      await _auth.signOut();
+
+      return {
+        "status": "success",
+        "message": "Verification email sent. Check your inbox.",
+      };
+    } on FirebaseAuthException catch (e) {
+      return {"status": "error", "message": firebaseAuthErrorMessage(e)};
     } catch (e) {
-      return {"status": "error", "message": e.toString()};
+      return {"status": "error", "message": friendlyErrorMessage(e)};
     }
   }
 
@@ -160,14 +188,25 @@ class AuthService {
     } catch (e) {
       return {
         "status": "error",
-        "message": "Failed to read credentials: ${e.toString()}",
+        "message": "Couldn't sign in with biometrics. Please login with your password.",
       };
     }
   }
 
-  /// Check if user is logged in
-  bool isLoggedIn() {
-    return _auth.currentUser != null;
+  /// Check if user is logged in with a verified email.
+  /// Reloads the cached user first so a verification done outside the app
+  /// (e.g. clicking the email link) is picked up on the next app open.
+  Future<bool> isLoggedIn() async {
+    final User? user = _auth.currentUser;
+    if (user == null) return false;
+
+    try {
+      await user.reload();
+    } catch (_) {
+      // Offline or transient error: fall back to the last known state.
+    }
+
+    return _auth.currentUser?.emailVerified ?? false;
   }
 
   /// Get current Firebase user
