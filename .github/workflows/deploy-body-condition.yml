@@ -10,10 +10,9 @@ on:
 
 env:
   IMAGE_NAME: watinakama-body-condition
-  WEBAPP_NAME: watinakama-body-condition
 
 jobs:
-  build-and-deploy:
+  build-and-push:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -33,9 +32,6 @@ jobs:
             docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
             docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
 
-      - name: Deploy to Azure Web App
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: ${{ env.WEBAPP_NAME }}
-          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE_BODY_CONDITION }}
-          images: docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+      # Azure App Service pulls the new :latest image automatically via the
+      # Docker Hub webhook configured on this repo's Webhooks tab - no Azure
+      # credentials needed here.
