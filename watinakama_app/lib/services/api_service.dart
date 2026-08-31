@@ -102,6 +102,45 @@ class ApiService {
     }
   }
 
+  /// Validates a single vehicle image against the expected view.
+  /// [imagePath] – path to the image file
+  /// [expectedView] – one of: front, rear, left, right, roof
+  ///
+  /// Returns a map with:
+  ///   valid      – bool
+  ///   correct    – bool
+  ///   predicted  – String (e.g. "Left")
+  ///   expected   – String (e.g. "Left")
+  ///   confidence – double
+  ///   message    – String (human-readable verdict)
+  Future<Map<String, dynamic>> validateView(String imagePath, String expectedView) async {
+    try {
+      final uri = Uri.parse(
+        '${ApiConfig.bodyApi}/api/v1/validate-view?expected_view=$expectedView',
+      );
+      var request = http.MultipartRequest('POST', uri);
+      request.files.add(await http.MultipartFile.fromPath('image', imagePath));
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode != 200) {
+        String msg = "View validation API returned status ${response.statusCode}";
+        try {
+          final errBody = jsonDecode(response.body);
+          msg = errBody['detail'] ?? errBody['message'] ?? msg;
+        } catch (_) {}
+        // On API error, allow through (fail-open)
+        return {"valid": true, "correct": true, "status": "error", "message": msg};
+      }
+
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (e) {
+      // Network error – fail-open so users aren't blocked
+      return {"valid": true, "correct": true, "status": "error", "message": e.toString()};
+    }
+  }
+
   /// Scans VIN from an image file.
   Future<Map<String, dynamic>> scanVin(File vinImage) async {
     try {

@@ -10,6 +10,9 @@ from pillow_heif import register_heif_opener
 # Register HEIC opener to support all Apple HEIC/HEIF images
 register_heif_opener()
 
+# Import the vehicle view validator
+from inference.view_validator import load_view_model, validate_view, VIEW_LABELS
+
 DAMAGE_TYPES = ["Dent", "Rust", "Scratch", "Undamaged"]
 BODY_PARTS = [
     'Bonnet', 'Dicky_Door', 'Front_Bumper', 'Left_Front_Door', 'Left_Front_Fender',
@@ -137,13 +140,12 @@ def _build_part_model():
 
 def load_models():
     """
-    Builds both specialist models and loads weights from .npz files.
+    Builds all three specialist models:
+      1. Damage Classifier  – MobileNetV3Small  (damage_capped_weights.npz)
+      2. Part Classifier    – EfficientNetV2B0  (part_only_weights.npz)
+      3. View Validator     – MobileNetV3Small  (vehicle_view_weights.weights.h5)
 
-    The .npz files were produced by convert_models_v3.py (run once in
-    the Keras 3 training environment) and contain all model weight arrays
-    in order. Loading via ``set_weights()`` is fully version-agnostic.
-
-    Returns dict: {"damage_model": ..., "part_model": ...}
+    Returns dict: {"damage_model": ..., "part_model": ..., "view_model": ...}
     """
     # ── Damage model (MobileNetV3Small) ────────────────────────────────
     dmg_npz = _find_npz("damage_capped_weights.npz")
@@ -168,7 +170,11 @@ def load_models():
     print(f"[INFO] Part model loaded ({len(w_list2)} weight arrays). "
           f"Test prediction: {part_model(np.zeros((1,224,224,3), dtype=np.float32), training=False).numpy()}")
 
-    return {"damage_model": damage_model, "part_model": part_model}
+    # ── View Validator (MobileNetV3Small, 5-class) ─────────────────────
+    print("[INFO] Loading vehicle view validator model...")
+    view_model = load_view_model()
+
+    return {"damage_model": damage_model, "part_model": part_model, "view_model": view_model}
 
 
 
@@ -297,13 +303,19 @@ def condition_label(score):
 
 def predict_body_condition(models, views, conf_threshold=0.25):
     """
-    Analyzes multiple views of a vehicle using two specialist models.
+    Analyzes multiple views of a vehicle using three specialist models:
+      1. View Validator  – validates each image shows the correct vehicle view
+      2. Damage Classifier – detects damage type (Dent / Rust / Scratch / Undamaged)
+      3. Part Classifier   – identifies which body part is damaged (13 classes)
+
+    View validation runs FIRST for every image.  If a wrong view is detected
+    with high confidence the view is flagged with a clear error and skipped in
+    the damage pipeline so the overall score is not contaminated.
 
     Parameters
     ----------
     models : dict
-        Dictionary with keys ``"damage_model"`` (MobileNetV3Small) and
-        ``"part_model"`` (EfficientNetV2B0), as returned by ``load_models()``.
+        Keys: ``"damage_model"``, ``"part_model"``, ``"view_model"``.
     views : dict
         Mapping of view name → raw image bytes.
         Expected keys: front, rear, left, right, roof (or up).
@@ -312,14 +324,20 @@ def predict_body_condition(models, views, conf_threshold=0.25):
     -------
     dict
         Full analysis result compatible with the FastAPI response schema and
-        the HTML frontend (index.html).
+        the HTML frontend (index.html).  Now includes:
+          ``view_validation`` – per-view validation status
+          ``view_errors``     – list of views that had wrong images
+          ``all_views_valid`` – bool
     """
     damage_model = models["damage_model"]
     part_model   = models["part_model"]
+    view_model   = models.get("view_model")   # may be None if loading failed
 
-    session_id   = str(uuid.uuid4())
+    session_id    = str(uuid.uuid4())
     view_analysis = {}
     damaged_parts = []
+    view_validation = {}   # per-view validation results
+    view_errors     = []   # list of views with wrong images
 
     os.makedirs("uploads", exist_ok=True)
     os.makedirs("outputs", exist_ok=True)
@@ -345,6 +363,65 @@ def predict_body_condition(models, views, conf_threshold=0.25):
                 f"The {view_name} file is not a valid or supported image format "
                 f"(JPEG, PNG, HEIC, etc.). Error: {str(e)}"
             )
+
+        # ── STEP 1: Validate the vehicle view ──────────────────────────────
+        validation_result = None
+        view_is_valid = True
+
+        if view_model is not None:
+            try:
+                validation_result = validate_view(view_model, contents, normalized_view)
+                view_validation[normalized_view] = validation_result
+
+                if not validation_result["correct"]:
+                    view_is_valid = False
+                    # Only block if model is confident it's the wrong view
+                    if not validation_result["uncertain"]:
+                        view_errors.append({
+                            "view":     normalized_view,
+                            "expected": validation_result["expected"],
+                            "detected": validation_result["predicted"],
+                            "confidence": validation_result["confidence"],
+                            "message":  validation_result["message"],
+                        })
+                        print(
+                            f"[VIEW VALIDATION] ❌ {normalized_view.upper()}: "
+                            f"Expected '{validation_result['expected']}', "
+                            f"detected '{validation_result['predicted']}' "
+                            f"({validation_result['confidence']:.1f}%). Skipping damage analysis."
+                        )
+                        # Add a placeholder in view_analysis so frontend knows this view had an error
+                        view_analysis[normalized_view] = {
+                            "status": "invalid_view",
+                            "view_validation": validation_result,
+                            "error": validation_result["message"],
+                            "damage_type": None,
+                            "body_part": None,
+                            "confidence": 0.0,
+                            "part_confidence": 0.0,
+                            "category": None,
+                            "score": 0.0,
+                            "penalty": 0.0,
+                            "visual_url": None,
+                            "damages": [],
+                        }
+                        continue  # Skip damage analysis for this view
+                    else:
+                        # Uncertain – log a warning but continue
+                        print(
+                            f"[VIEW VALIDATION] ⚠️  {normalized_view.upper()}: "
+                            f"Uncertain – looks like '{validation_result['predicted']}' "
+                            f"({validation_result['confidence']:.1f}%). Proceeding with caution."
+                        )
+                else:
+                    print(
+                        f"[VIEW VALIDATION] ✅ {normalized_view.upper()}: "
+                        f"'{validation_result['predicted']}' confirmed "
+                        f"({validation_result['confidence']:.1f}%)."
+                    )
+            except Exception as ve:
+                print(f"[VIEW VALIDATION] Warning – could not validate '{normalized_view}': {ve}")
+                view_is_valid = True   # fallback: allow the image through
 
         # Save uploaded copy
         upload_path = os.path.join("uploads", f"{session_id}_{normalized_view}.jpg")
@@ -499,9 +576,12 @@ def predict_body_condition(models, views, conf_threshold=0.25):
     final_score = round(final_score, 2)
 
     # Classify overall vehicle damage category
-    if len(damaged_parts) == 0:
+    if len(damaged_parts) == 0 and len(view_errors) == 0:
         vehicle_status  = "undamaged vehicle"
         damage_category = "none"
+    elif len(view_errors) > 0 and len(damaged_parts) == 0:
+        vehicle_status  = "view validation failed"
+        damage_category = "unknown"
     else:
         if final_score >= 80.0:
             vehicle_status  = "damaged vehicle (Small)"
@@ -519,24 +599,46 @@ def predict_body_condition(models, views, conf_threshold=0.25):
         # index.html expects 'up' instead of 'roof'
         compat_key = "up" if v_name == "roof" else v_name
 
-        if v_data["status"] == "undamaged":
+        if v_data.get("status") == "invalid_view":
+            html_results[compat_key] = {
+                "view_score": 0.0,
+                "undamaged_probability": 0.0,
+                "damaged_probability": 0.0,
+                "damage_type": None,
+                "penalty": 0.0,
+                "error": v_data.get("error"),
+            }
+        elif v_data["status"] == "undamaged":
             undamaged_prob = v_data["confidence"]
             damaged_prob   = 100.0 - undamaged_prob
+            html_results[compat_key] = {
+                "view_score": v_data["score"],
+                "undamaged_probability": round(undamaged_prob, 2),
+                "damaged_probability": round(damaged_prob, 2),
+                "damage_type": v_data["damage_type"],
+                "penalty": v_data["penalty"],
+            }
         else:
             damaged_prob   = v_data["confidence"]
             undamaged_prob = 100.0 - damaged_prob
+            html_results[compat_key] = {
+                "view_score": v_data["score"],
+                "undamaged_probability": round(undamaged_prob, 2),
+                "damaged_probability": round(damaged_prob, 2),
+                "damage_type": v_data["damage_type"],
+                "penalty": v_data["penalty"],
+            }
 
-        html_results[compat_key] = {
-            "view_score": v_data["score"],
-            "undamaged_probability": round(undamaged_prob, 2),
-            "damaged_probability": round(damaged_prob, 2),
-            "damage_type": v_data["damage_type"],
-            "penalty": v_data["penalty"],
-        }
+    # Determine if all views passed validation
+    all_views_valid = len(view_errors) == 0
 
+    summary_parts = [f"Score: {final_score}/100", f"Found {len(damaged_parts)} damage(s)."]
+    if view_errors:
+        failed_views = ", ".join(e["view"] for e in view_errors)
+        summary_parts.insert(0, f"⚠️ Wrong image(s) detected for: {failed_views}.")
     summary = (
         f"Analysis complete. Vehicle status: {vehicle_status}. "
-        f"Score: {final_score}/100. Found {len(damaged_parts)} damage(s)."
+        + " ".join(summary_parts)
     )
 
     return {
@@ -549,11 +651,17 @@ def predict_body_condition(models, views, conf_threshold=0.25):
         "score": final_score,
         "condition": condition_label(final_score),
         "damaged_parts": damaged_parts,
+        # View validation results
+        "all_views_valid": all_views_valid,
+        "view_errors": view_errors,
+        "view_validation": view_validation,
+        # Main analysis data
         "view_analysis": view_analysis,
         "results": html_results,
         "summary": summary,
         "models_used": {
             "damage_classifier": "MobileNetV3Small (damage_capped_model.weights.h5)",
-            "part_classifier": "EfficientNetV2B0 (part_only_model.weights.h5)",
+            "part_classifier":   "EfficientNetV2B0 (part_only_model.weights.h5)",
+            "view_validator":    "MobileNetV3Small (vehicle_view_weights.weights.h5)",
         },
     }
