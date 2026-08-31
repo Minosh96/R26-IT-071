@@ -31,6 +31,7 @@ load_dotenv()
 # ─── Configuration ─────────────────────────────────────────────────────────────
 API_TOKEN = os.getenv("API_SECRET_TOKEN", "dev-token-change-in-production")
 PORT      = int(os.getenv("FLASK_PORT", 8080))
+ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -312,6 +313,16 @@ def analyze_vehicle():
 
         if file.filename == "":
             abort(400, description=f"No selected file for view: {view}")
+
+        file_ext = pathlib.Path(file.filename).suffix.lower()
+        if file_ext not in ALLOWED_IMAGE_EXTENSIONS:
+            abort(
+                400,
+                description=(
+                    f"Unsupported file type ({file_ext or 'unknown'}) for view: {view}. "
+                    f"Please upload a {', '.join(sorted(e.lstrip('.').upper() for e in ALLOWED_IMAGE_EXTENSIONS))} image."
+                ),
+            )
 
         views_bytes[view] = file.read()
 
