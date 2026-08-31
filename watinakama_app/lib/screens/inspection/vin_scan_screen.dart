@@ -12,6 +12,7 @@ import '../../widgets/loading_overlay.dart';
 import '../../widgets/custom_toast.dart';
 import '../../widgets/result_sheet.dart';
 import '../../widgets/nav_button_row.dart';
+import '../../utils/file_validation.dart';
 
 class VinScanScreen extends StatefulWidget {
   const VinScanScreen({super.key});
@@ -76,6 +77,17 @@ class _VinScanScreenState extends State<VinScanScreen> {
     final picker = ImagePicker();
     final photo = await picker.pickImage(source: ImageSource.gallery);
     if (photo != null) {
+      final validationError = validateFileExtension(
+        photo.path,
+        allowedImageExtensions,
+        'JPG, PNG, WEBP, or HEIC image',
+      );
+      if (validationError != null) {
+        if (!mounted) return;
+        ToastService.show(context, validationError, isError: true);
+        return;
+      }
+
       final croppedPath = await _cropImage(photo.path);
       if (croppedPath == null || !mounted) return;
       setState(() {

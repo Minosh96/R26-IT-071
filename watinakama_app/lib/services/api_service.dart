@@ -6,7 +6,7 @@ import '../utils/error_messages.dart';
 class ApiConfig {
   // Change this to your PC's IP address when using real device
   // Use 10.0.2.2 for Android emulator
-  static const String baseIp = '127.0.0.1';
+  static const String baseIp = '192.168.1.6';
 
   static const String vinApi = 'http://$baseIp:8000';
   static const String bodyApi = 'http://$baseIp:8080';
