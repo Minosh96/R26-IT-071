@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import '../../constants/app_colors.dart';
 import '../../widgets/inspection_app_bar.dart';
 import '../../widgets/progress_stepper.dart';
@@ -79,11 +80,14 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
         return;
       }
 
+      final croppedPath = await _cropImage(photo.path);
+      if (croppedPath == null || !mounted) return;
+
       setState(() {
-        _capturedPaths[_currentAngle] = photo.path;
+        _capturedPaths[_currentAngle] = croppedPath;
         // Auto-advance to the next uncaptured angle if we just captured the current one
         if (_allCaptured) return;
-        
+
         for (int i = 0; i < 5; i++) {
           if (_capturedPaths[i] == null) {
             _currentAngle = i;
@@ -92,6 +96,26 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
         }
       });
     }
+  }
+
+  Future<String?> _cropImage(String sourcePath) async {
+    final cropped = await ImageCropper().cropImage(
+      sourcePath: sourcePath,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Crop $_currentAngleName View',
+          toolbarColor: const Color(0xFF0B0F17),
+          toolbarWidgetColor: Colors.white,
+          backgroundColor: const Color(0xFF0B0F17),
+          activeControlsWidgetColor: AppColors.primaryBlue,
+          lockAspectRatio: false,
+        ),
+        IOSUiSettings(
+          title: 'Crop $_currentAngleName View',
+        ),
+      ],
+    );
+    return cropped?.path;
   }
 
   Future<void> _handleNext() async {
@@ -267,6 +291,27 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
                                 fit: BoxFit.cover,
                                 width: double.infinity,
                                 height: double.infinity,
+                              ),
+                            ),
+                            // Re-crop button
+                            Positioned(
+                              top: 12,
+                              left: 12,
+                              child: GestureDetector(
+                                onTap: () async {
+                                  final croppedPath =
+                                      await _cropImage(_capturedPaths[_currentAngle]!);
+                                  if (croppedPath == null || !mounted) return;
+                                  setState(() => _capturedPaths[_currentAngle] = croppedPath);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(Icons.crop, color: Colors.white, size: 18),
+                                ),
                               ),
                             ),
                             // Retake indicator
