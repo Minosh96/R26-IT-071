@@ -11,3 +11,4 @@ seaborn>=0.13.0
 xgboost>=2.0.0
 lightgbm>=4.0.0
 flasgger>=0.9.5
+gunicorn>=21.2.0

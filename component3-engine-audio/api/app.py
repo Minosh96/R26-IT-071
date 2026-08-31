@@ -34,7 +34,7 @@ YAMNET_URL = "https://tfhub.dev/google/yamnet/1"
 API_TOKEN = os.getenv("API_SECRET_TOKEN", "dev-token-change-in-production")
 UPLOAD_FOLDER = "data/uploads"
 MAX_FILE_SIZE_MB = 50
-ALLOWED_EXTENSIONS = {".wav", ".mp3", ".m4a"}
+ALLOWED_EXTENSIONS = {".wav", ".mp3", ".m4a", ".mp4"}
 PORT = int(os.getenv("FLASK_PORT", 5003))
 
 # Initialize Flask app
@@ -186,7 +186,8 @@ def analyze_engine_sound():
     stages = ['audio_start', 'audio_idle', 'audio_acceleration']
     files_to_process = []
     temp_paths = []
-    
+    rejected_extensions = set()
+
     # Check if any stage-specific files are provided
     for stage in stages:
         if stage in request.files:
@@ -199,6 +200,8 @@ def analyze_engine_sound():
                     file.save(temp_path)
                     files_to_process.append(temp_path)
                     temp_paths.append(temp_path)
+                else:
+                    rejected_extensions.add(file_ext or "unknown")
 
     # Fallback to single 'audio_file' for backward compatibility
     if not files_to_process and 'audio_file' in request.files:
@@ -211,9 +214,19 @@ def analyze_engine_sound():
                 file.save(temp_path)
                 files_to_process.append(temp_path)
                 temp_paths.append(temp_path)
+            else:
+                rejected_extensions.add(file_ext or "unknown")
 
     if not files_to_process:
-        abort(400, description="No valid audio files found. Expected 'audio_start', 'audio_idle', or 'audio_acceleration'. Check your multipart form data keys.")
+        if rejected_extensions:
+            abort(
+                400,
+                description=(
+                    f"Unsupported audio format ({', '.join(sorted(rejected_extensions))}). "
+                    f"Please upload a {', '.join(sorted(e.lstrip('.').upper() for e in ALLOWED_EXTENSIONS))} file."
+                ),
+            )
+        abort(400, description="No audio file was provided. Please record or select an audio file first.")
 
     session_id = request.form.get('session_id')
     

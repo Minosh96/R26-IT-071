@@ -23,7 +23,16 @@ async def predict(file: UploadFile = File(...)):
     try:
         contents = await file.read()
         prediction = predict_vin(contents)
-        
+
+        if prediction.get("invalid_image"):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "message": "The uploaded file is not a valid image. Please upload a clear JPG or PNG photo of the VIN plate.",
+                    "status": "error",
+                },
+            )
+
         return {
             "filename": file.filename,
     "label": prediction["label"],

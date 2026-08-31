@@ -11,6 +11,7 @@ import '../../widgets/loading_overlay.dart';
 import '../../widgets/custom_toast.dart';
 import '../../widgets/result_sheet.dart';
 import '../../widgets/nav_button_row.dart';
+import '../../utils/file_validation.dart';
 
 class BodyImagesScreen extends StatefulWidget {
   const BodyImagesScreen({super.key});
@@ -67,6 +68,17 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
     );
     
     if (photo != null) {
+      final validationError = validateFileExtension(
+        photo.path,
+        allowedImageExtensions,
+        'JPG, PNG, WEBP, or HEIC image',
+      );
+      if (validationError != null) {
+        if (!mounted) return;
+        ToastService.show(context, validationError, isError: true);
+        return;
+      }
+
       setState(() {
         _capturedPaths[_currentAngle] = photo.path;
         // Auto-advance to the next uncaptured angle if we just captured the current one

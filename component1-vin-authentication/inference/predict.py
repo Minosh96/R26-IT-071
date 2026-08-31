@@ -17,7 +17,8 @@ def predict_vin(image_bytes):
     if img is None:
         return {
             "label": "Invalid Image",
-            "confidence": 0.0
+            "confidence": 0.0,
+            "invalid_image": True,
         }
 
     # Resize image for MobileNetV2
