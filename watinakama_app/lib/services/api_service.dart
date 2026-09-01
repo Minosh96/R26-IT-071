@@ -6,11 +6,18 @@ import '../utils/error_messages.dart';
 class ApiConfig {
   // The gateway is the single public entry point; it proxies to the 4
   // backend services and injects their auth tokens server-side.
-  // Temporary local IP for testing the physical device over WiFi
-  static const String gatewayBaseUrl = 'http://192.168.1.2:8080';
+  //
+  // Override for local testing without touching this file, e.g.:
+  //   flutter run --dart-define=GATEWAY_BASE_URL=http://192.168.1.4:9000
+  // (use your PC's LAN IP for a physical phone, or http://10.0.2.2:9000 on the
+  // Android emulator). Defaults to the deployed Azure gateway.
+  static const String gatewayBaseUrl = String.fromEnvironment(
+    'GATEWAY_BASE_URL',
+    defaultValue: 'https://watinakama-gateway.azurewebsites.net',
+  );
 
   static const String vinApi = '$gatewayBaseUrl/vin';
-  static const String bodyApi = gatewayBaseUrl; // Local backend handles everything directly
+  static const String bodyApi = '$gatewayBaseUrl/body';
   static const String engineApi = '$gatewayBaseUrl/engine';
   static const String valuationApi = '$gatewayBaseUrl/valuation';
 }
@@ -51,12 +58,23 @@ class ApiService {
       var response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode != 200) {
-        String msg = "API returned status code ${response.statusCode}";
+        // 422 carries a structured per-stage validation result — pass it through
+        // intact so the UI can highlight which recordings failed and why.
         try {
-          final errBody = jsonDecode(response.body);
-          msg = errBody['detail'] ?? errBody['message'] ?? errBody['error'] ?? msg;
-        } catch (_) {}
-        return {"status": "error", "status_code": response.statusCode, "message": msg};
+          final errBody = jsonDecode(response.body) as Map<String, dynamic>;
+          if (errBody['status'] == 'validation_error' || errBody.containsKey('stages')) {
+            return errBody;
+          }
+          final msg = errBody['detail'] ?? errBody['message'] ?? errBody['error'] ??
+              "API returned status code ${response.statusCode}";
+          return {"status": "error", "status_code": response.statusCode, "message": msg};
+        } catch (_) {
+          return {
+            "status": "error",
+            "status_code": response.statusCode,
+            "message": "API returned status code ${response.statusCode}",
+          };
+        }
       }
 
       return jsonDecode(response.body) as Map<String, dynamic>;

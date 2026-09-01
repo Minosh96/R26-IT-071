@@ -19,15 +19,27 @@ Future<void> showResultSheet(
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
-    builder: (sheetContext) => Padding(
-      padding: EdgeInsets.fromLTRB(24, 28, 24, MediaQuery.of(sheetContext).viewInsets.bottom + 24),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          content,
-          const SizedBox(height: 28),
-          CustomButton(text: ctaLabel, onPressed: onCta),
-        ],
+    builder: (sheetContext) => ConstrainedBox(
+      // Cap the sheet height so a long summary can't push the CTA off-screen;
+      // the content scrolls while the continue button stays pinned and visible.
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(sheetContext).size.height * 0.85,
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(24, 28, 24, MediaQuery.of(sheetContext).viewInsets.bottom + 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Flexible(
+                child: SingleChildScrollView(child: content),
+              ),
+              const SizedBox(height: 28),
+              CustomButton(text: ctaLabel, onPressed: onCta),
+            ],
+          ),
+        ),
       ),
     ),
   );

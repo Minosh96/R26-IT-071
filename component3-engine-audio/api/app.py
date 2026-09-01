@@ -34,6 +34,7 @@ YAMNET_URL = "https://tfhub.dev/google/yamnet/1"
 API_TOKEN = os.getenv("API_SECRET_TOKEN", "dev-token-change-in-production")
 UPLOAD_FOLDER = "data/uploads"
 MAX_FILE_SIZE_MB = 50
+MIN_FILE_SIZE_KB = int(os.getenv("MIN_FILE_SIZE_KB", 5))
 ALLOWED_EXTENSIONS = {".wav", ".mp3", ".m4a", ".mp4"}
 PORT = int(os.getenv("FLASK_PORT", 5003))
 
@@ -183,73 +184,81 @@ def analyze_engine_sound():
         description: Analysis successful
     """
     # --- Multi-Stage Analysis Support ---
-    stages = ['audio_start', 'audio_idle', 'audio_acceleration']
-    files_to_process = []
+    # Ordered field names; 'audio_file' is a legacy single-clip fallback.
+    stage_fields = ['audio_start', 'audio_idle', 'audio_acceleration']
+    file_map = {}            # field -> saved temp path (passed to analyze)
+    pre_invalid = {}         # field -> per-stage rejection (format/size, before analyze)
     temp_paths = []
     rejected_extensions = set()
 
-    # Check if any stage-specific files are provided
-    for stage in stages:
-        if stage in request.files:
-            file = request.files[stage]
-            if file.filename != '':
-                file_ext = pathlib.Path(file.filename).suffix.lower()
-                if file_ext in ALLOWED_EXTENSIONS:
-                    temp_filename = f"{uuid.uuid4()}_{stage}{file_ext}"
-                    temp_path = os.path.join(UPLOAD_FOLDER, temp_filename)
-                    file.save(temp_path)
-                    files_to_process.append(temp_path)
-                    temp_paths.append(temp_path)
-                else:
-                    rejected_extensions.add(file_ext or "unknown")
+    def _accept(field, file):
+        """Save an uploaded file after format + size checks. Records rejections."""
+        file_ext = pathlib.Path(file.filename).suffix.lower()
+        if file_ext not in ALLOWED_EXTENSIONS:
+            rejected_extensions.add(file_ext or "unknown")
+            allowed = ', '.join(sorted(e.lstrip('.').upper() for e in ALLOWED_EXTENSIONS))
+            pre_invalid[field] = {
+                "valid": False, "code": "BAD_FORMAT",
+                "message": f"Unsupported format ({file_ext or 'unknown'}). Use a {allowed} file.",
+            }
+            return
+        temp_path = os.path.join(UPLOAD_FOLDER, f"{uuid.uuid4()}_{field}{file_ext}")
+        file.save(temp_path)
+        temp_paths.append(temp_path)
+        size_kb = os.path.getsize(temp_path) / 1024
+        if size_kb < MIN_FILE_SIZE_KB:
+            pre_invalid[field] = {
+                "valid": False, "code": "TOO_SMALL",
+                "message": f"File is too small ({size_kb:.0f} KB) and looks empty or corrupt. Please re-record.",
+            }
+            return
+        file_map[field] = temp_path
 
-    # Fallback to single 'audio_file' for backward compatibility
-    if not files_to_process and 'audio_file' in request.files:
-        file = request.files['audio_file']
-        if file.filename != '':
-            file_ext = pathlib.Path(file.filename).suffix.lower()
-            if file_ext in ALLOWED_EXTENSIONS:
-                temp_filename = f"{uuid.uuid4()}_single{file_ext}"
-                temp_path = os.path.join(UPLOAD_FOLDER, temp_filename)
-                file.save(temp_path)
-                files_to_process.append(temp_path)
-                temp_paths.append(temp_path)
-            else:
-                rejected_extensions.add(file_ext or "unknown")
+    for field in stage_fields:
+        if field in request.files and request.files[field].filename != '':
+            _accept(field, request.files[field])
 
-    if not files_to_process:
-        if rejected_extensions:
-            abort(
-                400,
-                description=(
-                    f"Unsupported audio format ({', '.join(sorted(rejected_extensions))}). "
-                    f"Please upload a {', '.join(sorted(e.lstrip('.').upper() for e in ALLOWED_EXTENSIONS))} file."
-                ),
-            )
+    # Legacy single-file fallback only when no stage-specific files were sent.
+    if not file_map and not pre_invalid and 'audio_file' in request.files:
+        if request.files['audio_file'].filename != '':
+            _accept('audio_file', request.files['audio_file'])
+
+    if not file_map and not pre_invalid:
         abort(400, description="No audio file was provided. Please record or select an audio file first.")
 
     session_id = request.form.get('session_id')
-    
+
     try:
-        # 4. Perform prediction (Multi or Single)
-        if len(files_to_process) > 1:
-            from inference.predict import predict_multi
-            result = predict_multi(files_to_process, YAMNET_MODEL, SVM_MODEL, SCALER, LABEL_MAP)
+        from inference.predict import analyze, _public_stages
+
+        if file_map:
+            result = analyze(file_map, YAMNET_MODEL, SVM_MODEL, SCALER, LABEL_MAP)
         else:
-            result = predict(files_to_process[0], YAMNET_MODEL, SVM_MODEL, SCALER, LABEL_MAP)
-        
-        # 5. Add session_id if provided
+            # Every provided file was rejected pre-analysis.
+            result = {"status": "validation_error",
+                      "message": "Some recordings couldn't be validated. Please re-record the highlighted stages.",
+                      "stages": {}}
+
+        # Merge in format/size rejections so the client sees every stage.
+        if pre_invalid:
+            result.setdefault("stages", {}).update(pre_invalid)
+            result["status"] = "validation_error"
+            result["message"] = "Some recordings couldn't be validated. Please re-record the highlighted stages."
+            result.pop("mhs_score", None)
+            result.pop("fault_class", None)
+
         if session_id:
             result['session_id'] = session_id
-            
-        return jsonify(result), 200
-        
+
+        status_code = 422 if result.get("status") == "validation_error" else 200
+        return jsonify(result), status_code
+
     except Exception as e:
         print(f"Error during analysis: {str(e)}")
         return jsonify({"error": f"Analysis failed: {str(e)}", "status_code": 500}), 500
-        
+
     finally:
-        # 6. Cleanup: Delete all temp files
+        # Cleanup: delete all temp files
         for path in temp_paths:
             if os.path.exists(path):
                 try:
