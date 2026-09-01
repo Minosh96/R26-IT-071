@@ -139,14 +139,29 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
   Future<void> _validateCurrentView(int index, String imagePath) async {
     final result =
         await _apiService.validateView(imagePath, _kApiViewKeys[index]);
+    
     if (!mounted) return;
+
+    if (result['status'] == 'error') {
+      setState(() => _viewValidating[index] = false);
+      ToastService.show(
+        context,
+        'API Error: ${result['message']}\n(Allowed through for now)',
+        isError: true,
+      );
+      // Fall through to let it be valid (fail-open)
+    }
+
     setState(() {
-      _viewValidating[index] = false;
+      if (result['status'] != 'error') {
+        _viewValidating[index] = false;
+      }
       final isCorrect   = result['correct']   as bool? ?? true;
       final isUncertain = result['uncertain'] as bool? ?? false;
       _viewValid[index]   = isCorrect || isUncertain;
       _viewMessage[index] = result['message'] as String?;
     });
+
     if (mounted && _viewValid[index] == false) {
       final predicted = result['predicted'] as String? ?? 'unknown';
       ToastService.show(

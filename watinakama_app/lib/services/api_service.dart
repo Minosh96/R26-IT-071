@@ -6,10 +6,11 @@ import '../utils/error_messages.dart';
 class ApiConfig {
   // The gateway is the single public entry point; it proxies to the 4
   // backend services and injects their auth tokens server-side.
-  static const String gatewayBaseUrl = 'https://watinakama-gateway.azurewebsites.net';
+  // Temporary local IP for testing the physical device over WiFi
+  static const String gatewayBaseUrl = 'http://192.168.1.2:8080';
 
   static const String vinApi = '$gatewayBaseUrl/vin';
-  static const String bodyApi = '$gatewayBaseUrl/body';
+  static const String bodyApi = gatewayBaseUrl; // Local backend handles everything directly
   static const String engineApi = '$gatewayBaseUrl/engine';
   static const String valuationApi = '$gatewayBaseUrl/valuation';
 }
@@ -113,11 +114,16 @@ class ApiService {
       final uri = Uri.parse(
         '${ApiConfig.bodyApi}/api/v1/validate-view?expected_view=$expectedView',
       );
+      print('VIEW API URL: $uri');
+      
       var request = http.MultipartRequest('POST', uri);
       request.files.add(await http.MultipartFile.fromPath('image', imagePath));
 
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
+
+      print('STATUS: ${response.statusCode}');
+      print('BODY: ${response.body}');
 
       if (response.statusCode != 200) {
         String msg = "View validation API returned status ${response.statusCode}";
@@ -125,14 +131,15 @@ class ApiService {
           final errBody = jsonDecode(response.body);
           msg = errBody['detail'] ?? errBody['message'] ?? msg;
         } catch (_) {}
-        // On API error, allow through (fail-open)
-        return {"valid": true, "correct": true, "status": "error", "message": msg};
+        // Fails correctly instead of fail-open
+        return {"valid": false, "correct": false, "status": "error", "message": msg};
       }
 
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
-      // Network error – fail-open so users aren't blocked
-      return {"valid": true, "correct": true, "status": "error", "message": e.toString()};
+      print('VIEW API ERROR: $e');
+      // Network error – no longer fail-open, return false!
+      return {"valid": false, "correct": false, "status": "error", "message": e.toString()};
     }
   }
 
