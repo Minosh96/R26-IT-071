@@ -70,14 +70,15 @@ BASE_SCORES = {
 }
 PENALTY_WEIGHT = 30
 
-# Plain English explanations
+# Plain English explanations: state the issue detected and whether a mechanic
+# inspection is advised — without disclosing the underlying cause of the fault.
 FAULT_EXPLANATIONS = {
-    "healthy": "The engine sounds healthy. No faults detected.",
-    "knocking": "Engine knocking detected. This is a serious fault that may indicate low oil pressure or fuel quality issues. Have this inspected before purchasing.",
-    "misfiring": "Engine misfiring detected. The engine is not firing consistently. This could indicate spark plug or fuel injector issues.",
-    "rotational_imbalance": "Rotational imbalance detected. A component may be worn or loose, causing uneven rotation.",
-    "tappet": "Tappet noise detected. This clicking sound may indicate valve clearance issues, often worse when the engine is cold.",
-    "battery_fault": "Battery or starting fault detected. The engine struggled to start normally. Battery or starter motor may need attention."
+    "healthy": "The engine sounds healthy. No faults detected — a further mechanical inspection isn't needed based on the audio.",
+    "knocking": "Engine knocking detected. We recommend having a mechanic inspect the engine before you buy.",
+    "misfiring": "Engine misfiring detected. We recommend having a mechanic inspect the engine before you buy.",
+    "rotational_imbalance": "Rotational imbalance detected. We recommend having a mechanic inspect the engine before you buy.",
+    "tappet": "Tappet noise detected. We recommend having a mechanic inspect the engine before you buy.",
+    "battery_fault": "Battery or starting fault detected. We recommend having a mechanic inspect the engine before you buy."
 }
 
 
@@ -273,7 +274,7 @@ def _health_from_embedding(embedding, svm_model, scaler, label_map, duration):
         "confidence_percent": f"{int(round(confidence * 100))}%",
         "mhs_score": mhs_score,
         "color_indicator": get_color_indicator(mhs_score),
-        "explanation": FAULT_EXPLANATIONS.get(fault_class, "Unknown fault."),
+        "explanation": FAULT_EXPLANATIONS.get(fault_class, "An unusual engine sound was detected. We recommend having a mechanic inspect the engine before you buy."),
         "recommend_professional": mhs_score < 70,
         "duration_seconds": round(duration, 2),
     }
