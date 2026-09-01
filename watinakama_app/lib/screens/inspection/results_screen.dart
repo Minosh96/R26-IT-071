@@ -258,6 +258,65 @@ class _ResultsScreenState extends State<ResultsScreen> {
   }
 
   Widget _buildDetailedReportCard() {
+    // Drive every line from the ACTUAL per-component outputs (carried in
+    // _vehicleData) — not from optional valuation fields that silently fall
+    // back to "no problem" and misreport a damaged/altered vehicle.
+
+    // Engine — reflect the real fault class from the engine component.
+    final faultClass = (_vehicleData['fault_class'] ?? '').toString();
+    final bool engineAnalyzed = faultClass.isNotEmpty || _engineConditionScore > 0;
+    final bool engineHealthy = faultClass.isEmpty || faultClass.toLowerCase() == 'healthy';
+    String engineText;
+    Color engineColor;
+    if (!engineAnalyzed) {
+      engineText = "Not analyzed";
+      engineColor = AppColors.textGray;
+    } else if (engineHealthy) {
+      engineText = "No faults detected";
+      engineColor = AppColors.statusGreen;
+    } else {
+      engineText = "${_prettifyFault(faultClass)} detected";
+      engineColor = AppColors.statusColorFor(_engineConditionScore);
+    }
+
+    // Body — reflect the real detected damages / condition score.
+    final bodyDamages = (_vehicleData['body_damages'] as List?) ?? const [];
+    final bool bodyAnalyzed = _vehicleData['body_score'] != null || bodyDamages.isNotEmpty;
+    String bodyText;
+    Color bodyColor;
+    if (!bodyAnalyzed) {
+      bodyText = "Not analyzed";
+      bodyColor = AppColors.textGray;
+    } else if (bodyDamages.isNotEmpty) {
+      bodyText = "${bodyDamages.length} issue${bodyDamages.length == 1 ? '' : 's'} detected";
+      bodyColor = AppColors.statusColorFor(_bodyConditionScore);
+    } else {
+      bodyText = "No significant damage";
+      bodyColor = AppColors.statusColorFor(_bodyConditionScore);
+    }
+
+    // VIN — surface the real verdict instead of collapsing everything
+    // non-original into a soft "Verification required".
+    String vinText;
+    Color vinColor;
+    switch (_vinCondition) {
+      case 'Original':
+        vinText = "Legally verified";
+        vinColor = AppColors.statusGreen;
+        break;
+      case 'Altered':
+        vinText = "Altered — do not purchase";
+        vinColor = AppColors.statusRed;
+        break;
+      case 'Needs Review':
+        vinText = "Verification required";
+        vinColor = AppColors.statusAmber;
+        break;
+      default:
+        vinText = "Not verified";
+        vinColor = AppColors.textGray;
+    }
+
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -267,23 +326,9 @@ class _ResultsScreenState extends State<ResultsScreen> {
             style: TextStyle(color: AppColors.textWhite, fontWeight: FontWeight.bold, fontSize: 15),
           ),
           const SizedBox(height: 12),
-          _buildDetailItem(
-            "Engine Fault",
-            _valuationResult['engine_description'] ?? "No faults detected",
-            AppColors.statusColorFor(_engineConditionScore),
-          ),
-          _buildDetailItem(
-            "Body Damage",
-            _valuationResult['body_damage_category'] != null 
-              ? "Category: ${_valuationResult['body_damage_category'].toString().toUpperCase()}"
-              : "No significant damage",
-            AppColors.statusColorFor(_bodyConditionScore),
-          ),
-          _buildDetailItem(
-            "VIN Status",
-            _vinCondition == 'Original' ? "Legally verified" : "Verification required",
-            _vinCondition == 'Original' ? AppColors.statusGreen : AppColors.statusRed,
-          ),
+          _buildDetailItem("Engine Fault", engineText, engineColor),
+          _buildDetailItem("Body Damage", bodyText, bodyColor),
+          _buildDetailItem("VIN Status", vinText, vinColor),
           if (_valuationResult['vin_warning'] != null)
             Padding(
               padding: const EdgeInsets.only(top: 4, bottom: 8),
@@ -305,6 +350,13 @@ class _ResultsScreenState extends State<ResultsScreen> {
         ],
       ),
     );
+  }
+
+  /// Turns a raw fault class like "battery_fault" into "Battery fault".
+  String _prettifyFault(String faultClass) {
+    final cleaned = faultClass.replaceAll('_', ' ').trim();
+    if (cleaned.isEmpty) return 'Fault';
+    return cleaned[0].toUpperCase() + cleaned.substring(1);
   }
 
   Widget _buildDetailItem(String title, String value, Color color) {
