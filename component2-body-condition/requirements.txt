@@ -7,3 +7,9 @@ opencv-python
 python-multipart
 Pillow
 numpy
+tensorflow
+pillow-heif
+flasgger
+fastapi
+uvicorn
+h5py

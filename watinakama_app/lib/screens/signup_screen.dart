@@ -6,6 +6,7 @@ import '../widgets/custom_text_field.dart';
 import '../widgets/custom_button.dart';
 import '../services/auth_service.dart';
 import '../widgets/custom_toast.dart';
+import 'email_verification_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -55,8 +56,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
       setState(() => _isLoading = false);
 
       if (result['status'] == 'success') {
-        ToastService.show(context, 'Account created! Please login.');
-        Navigator.pushReplacementNamed(context, '/login');
+        ToastService.show(context, result['message']);
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => EmailVerificationScreen(email: email, password: password),
+          ),
+        );
       } else {
         _showError(result['message']);
       }
@@ -96,7 +102,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: AppColors.textWhite,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -145,7 +151,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                         child: const Center(
                           child: Text(
                             "+94",
-                            style: TextStyle(color: Colors.white, fontSize: 14),
+                            style: TextStyle(color: AppColors.textWhite, fontSize: 14),
                           ),
                         ),
                       ),

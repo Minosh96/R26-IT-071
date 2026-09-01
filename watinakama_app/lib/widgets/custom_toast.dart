@@ -71,15 +71,15 @@ class _CustomToastState extends State<CustomToast> with SingleTickerProviderStat
                 constraints: const BoxConstraints(maxWidth: 320),
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  color: widget.isError ? const Color(0xFF2D1B1B) : const Color(0xFF1B2D1B),
+                  color: widget.isError ? AppColors.statusRedBg : AppColors.statusGreenBg,
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: widget.isError ? Colors.redAccent.withOpacity(0.5) : Colors.greenAccent.withOpacity(0.5),
+                    color: (widget.isError ? AppColors.statusRed : AppColors.statusGreen).withValues(alpha: 0.5),
                     width: 1,
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.3),
+                      color: Colors.black.withValues(alpha: 0.3),
                       blurRadius: 10,
                       offset: const Offset(0, 4),
                     ),
@@ -90,7 +90,7 @@ class _CustomToastState extends State<CustomToast> with SingleTickerProviderStat
                   children: [
                     Icon(
                       widget.isError ? Icons.error_outline : Icons.check_circle_outline,
-                      color: widget.isError ? Colors.redAccent : Colors.greenAccent,
+                      color: widget.isError ? AppColors.statusRed : AppColors.statusGreen,
                       size: 20,
                     ),
                     const SizedBox(width: 12),
@@ -98,7 +98,7 @@ class _CustomToastState extends State<CustomToast> with SingleTickerProviderStat
                       child: Text(
                         widget.message,
                         style: const TextStyle(
-                          color: Colors.white,
+                          color: AppColors.textWhite,
                           fontSize: 13,
                           fontWeight: FontWeight.w500,
                         ),
@@ -110,12 +110,12 @@ class _CustomToastState extends State<CustomToast> with SingleTickerProviderStat
                       child: Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
+                          color: Colors.black.withValues(alpha: 0.08),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
                           Icons.close,
-                          color: Colors.white70,
+                          color: AppColors.textGray,
                           size: 14,
                         ),
                       ),
@@ -132,13 +132,34 @@ class _CustomToastState extends State<CustomToast> with SingleTickerProviderStat
 }
 
 class ToastService {
+  // Fallback markers/rules for messages that slipped through as raw
+  // exception text instead of a friendly string (see utils/error_messages.dart,
+  // which should be used at the source instead of relying on this net).
+  static const List<String> _technicalMarkers = [
+    'Exception',
+    'PlatformException',
+    'FormatException',
+    'StackTrace',
+    'package:',
+    'at Object.',
+  ];
+
+  static const String _genericErrorMessage = "Something went wrong. Please try again.";
+
+  static String _sanitize(String message, bool isError) {
+    if (!isError) return message;
+    final looksTechnical =
+        _technicalMarkers.any((marker) => message.contains(marker)) || message.length > 160;
+    return looksTechnical ? _genericErrorMessage : message;
+  }
+
   static void show(BuildContext context, String message, {bool isError = false}) {
     final overlay = Overlay.of(context);
     late OverlayEntry entry;
 
     entry = OverlayEntry(
       builder: (context) => CustomToast(
-        message: message,
+        message: _sanitize(message, isError),
         isError: isError,
         onDismiss: () {
           entry.remove();

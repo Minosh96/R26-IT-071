@@ -1,3 +1,5 @@
+import pathlib
+
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
 import uvicorn
@@ -5,20 +7,49 @@ from inference.predict import predict_vin
 
 app = FastAPI(title="VIN Authentication API", description="API for classifying VIN images as Original, Altered, or Need Review")
 
-@app.get("/")
+ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
+
+@app.get("/health")
 async def health_check():
     """Health check endpoint."""
     return {"status": "healthy", "message": "VIN Authentication Service is running"}
+
+@app.get("/api/v1/health")
+async def health_check_v1():
+    return await health_check()
+
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
     """
     Endpoint to upload a VIN image and get a prediction.
     """
+    file_ext = pathlib.Path(file.filename or "").suffix.lower()
+    if file_ext not in ALLOWED_IMAGE_EXTENSIONS:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "message": (
+                    f"Unsupported file type ({file_ext or 'unknown'}). "
+                    f"Please upload a {', '.join(sorted(e.lstrip('.').upper() for e in ALLOWED_IMAGE_EXTENSIONS))} image."
+                ),
+                "status": "error",
+            },
+        )
+
     try:
         contents = await file.read()
         prediction = predict_vin(contents)
-        
+
+        if prediction.get("invalid_image"):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "message": "The uploaded file is not a valid image. Please upload a clear JPG or PNG photo of the VIN plate.",
+                    "status": "error",
+                },
+            )
+
         return {
             "filename": file.filename,
     "label": prediction["label"],

@@ -36,24 +36,14 @@ def load_yamnet_model():
 
 
 def resample_audio(audio, original_sr, target_sr=16000):
-    """
-    Resample audio array from original_sr to target_sr using librosa.resample.
-    Return resampled audio as float32 numpy array. 
-    Ensure values are clipped between -1 and 1.
-    """
+
     resampled = librosa.resample(y=audio, orig_sr=original_sr, target_sr=target_sr)
     resampled = np.clip(resampled, -1.0, 1.0)
     return resampled.astype(np.float32)
 
 
 def extract_yamnet_embedding(yamnet_model, audio, sr):
-    """
-    Extract features from YAMNet.
-    Resample audio to 16000Hz if not already. Convert to float32 and ensure mono.
-    Pass through yamnet_model to get scores, embeddings, spectrogram.
-    YAMNet returns embeddings of shape (num_frames, 1024). Take the mean across 
-    frames to get a single (1024,) vector. Return the 1024-dimensional embedding.
-    """
+
     try:
         if sr != 16000:
             audio = resample_audio(audio, sr, target_sr=16000)

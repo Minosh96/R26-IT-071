@@ -9,9 +9,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../constants/app_colors.dart';
 import '../widgets/wave_header.dart';
 import '../widgets/custom_button.dart';
-import '../services/auth_service.dart';
+import '../widgets/app_card.dart';
 import '../services/biometric_service.dart';
 import '../widgets/custom_toast.dart';
+import '../utils/error_messages.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -21,19 +22,18 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final AuthService _auth = AuthService();
   final BiometricService _bio = BiometricService();
   final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  
+
   bool _isLoading = false;
   bool _showPasswordFields = false;
   bool _isBioAvailable = false;
   bool _isBioEnabled = false;
   File? _profileImage;
-  String _userEmail = '';
   String _userName = '';
 
   @override
@@ -53,18 +53,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       _nameController.text = user.displayName ?? '';
-      _userEmail = user.email ?? '';
+      _emailController.text = user.email ?? '';
       _userName = user.displayName ?? 'User';
-      
+
       final prefs = await SharedPreferences.getInstance();
       _phoneController.text = prefs.getString('user_phone') ?? '';
-      
-      // Load profile image path
+
       final imagePath = prefs.getString('user_profile_pic');
       if (imagePath != null && File(imagePath).existsSync()) {
         _profileImage = File(imagePath);
       }
-      
+
       setState(() {});
     }
   }
@@ -87,7 +86,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (_showPasswordFields) {
       final pass = _passwordController.text;
       final confirm = _confirmPasswordController.text;
-      
+
       if (pass.isEmpty) {
         _showError("Please enter a new password");
         return;
@@ -106,16 +105,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     try {
       final user = FirebaseAuth.instance.currentUser;
-      
-      // Update display name
       await user?.updateDisplayName(name);
-      
-      // Save phone to prefs
+
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_phone', _phoneController.text.trim());
-      await prefs.setString('user_name', name); // Keep synced with AuthService logic
+      await prefs.setString('user_name', name);
 
-      // Handle Image Persistence (Local Storage)
       if (_profileImage != null) {
         final Directory appDir = await getApplicationDocumentsDirectory();
         final String fileName = path.basename(_profileImage!.path);
@@ -123,15 +118,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
         await prefs.setString('user_profile_pic', permanentImage.path);
       }
 
-      // Update password if requested
       if (_showPasswordFields && _passwordController.text.isNotEmpty) {
         await user?.updatePassword(_passwordController.text);
-        
-        // Sync with secure storage for biometric login
+
         const secureStorage = FlutterSecureStorage(
-          aOptions: AndroidOptions(
-            encryptedSharedPreferences: true,
-          ),
+          aOptions: AndroidOptions(encryptedSharedPreferences: true),
         );
         await secureStorage.write(key: 'password', value: _passwordController.text);
       }
@@ -141,13 +132,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         Navigator.pop(context);
       }
     } on FirebaseAuthException catch (e) {
-      if (e.code == 'requires-recent-login') {
-        _showError("Please logout and login again before changing password");
-      } else {
-        _showError(e.message ?? "An error occurred");
-      }
+      _showError(firebaseAuthErrorMessage(e));
     } catch (e) {
-      _showError(e.toString());
+      _showError(friendlyErrorMessage(e));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -160,6 +147,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _emailController.dispose();
     _phoneController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -171,35 +159,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       backgroundColor: AppColors.darkNavyBg,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
         centerTitle: true,
         automaticallyImplyLeading: false,
         title: const Text(
           "Manage Profile",
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: Colors.white),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: AppColors.textWhite),
         ),
       ),
       body: SingleChildScrollView(
         child: Column(
           children: [
-            // Top Section with Wave
             WaveHeader(
-              height: 240,
+              height: 245,
               child: Center(
                 child: Column(
                   children: [
-                    const SizedBox(height: 40),
+                    const SizedBox(height: 30),
                     Stack(
                       children: [
                         CircleAvatar(
-                          radius: 55,
+                          radius: 52,
                           backgroundColor: Colors.white,
-                          backgroundImage: _profileImage != null
-                              ? FileImage(_profileImage!)
-                              : null,
+                          backgroundImage: _profileImage != null ? FileImage(_profileImage!) : null,
                           child: _profileImage == null
-                              ? const Icon(Icons.person, size: 55, color: Colors.grey)
+                              ? const Icon(Icons.person, size: 52, color: Colors.grey)
                               : null,
                         ),
                         Positioned(
@@ -208,14 +191,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           child: GestureDetector(
                             onTap: _pickImage,
                             child: Container(
-                              width: 34,
-                              height: 34,
+                              width: 32,
+                              height: 32,
                               decoration: BoxDecoration(
                                 color: AppColors.primaryBlue,
                                 shape: BoxShape.circle,
                                 border: Border.all(color: Colors.white, width: 2),
                               ),
-                              child: const Icon(Icons.camera_alt, color: Colors.white, size: 18),
+                              child: const Icon(Icons.camera_alt, color: Colors.white, size: 16),
                             ),
                           ),
                         ),
@@ -224,11 +207,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     const SizedBox(height: 10),
                     Text(
                       "Hi, $_userName",
-                      style: const TextStyle(
-                        color: AppColors.textDark,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
+                      style: const TextStyle(color: AppColors.textDark, fontSize: 14, fontWeight: FontWeight.w500),
                     ),
                   ],
                 ),
@@ -236,122 +215,76 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
 
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     "Your Account Details",
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textWhite),
                   ),
                   const SizedBox(height: 20),
 
-                  // Full Name
-                  _buildLabel("Full Name (Username)"),
-                  _buildTextField(_nameController, hint: "Enter your name"),
-                  const SizedBox(height: 16),
+                  CustomTextField(
+                    label: "Full Name",
+                    controller: _nameController,
+                    hint: "Enter your name",
+                  ),
+                  const SizedBox(height: 14),
 
-                  // Email (Disabled)
-                  _buildLabel("E-mail (Disabled)"),
-                  TextField(
-                    controller: TextEditingController(text: _userEmail),
+                  CustomTextField(
+                    label: "E-mail",
+                    controller: _emailController,
                     enabled: false,
-                    style: const TextStyle(color: AppColors.textGray),
-                    decoration: InputDecoration(
-                      filled: true,
-                      fillColor: const Color(0xFF1A1A2A),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                      suffixIcon: const Icon(Icons.lock_outline, color: AppColors.textGray, size: 18),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                        borderSide: const BorderSide(color: AppColors.textFieldBorder),
-                      ),
-                    ),
+                    suffixIcon: Icons.lock_outline,
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
 
-                  // Mobile Number
-                  _buildLabel("Mobile Number"),
-                  Row(
-                    children: [
-                      Container(
-                        width: 65,
-                        height: 52,
-                        decoration: BoxDecoration(
-                          color: AppColors.darkNavyCard,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppColors.textFieldBorder),
-                        ),
-                        child: const Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text("🇱🇰", style: TextStyle(fontSize: 18)),
-                            SizedBox(width: 4),
-                            Icon(Icons.arrow_drop_down, color: AppColors.textGray, size: 16),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: _buildTextField(_phoneController, hint: "+94 77 XXXXXXX", keyboardType: TextInputType.phone),
-                      ),
-                    ],
+                  CustomTextField(
+                    label: "Mobile Number",
+                    controller: _phoneController,
+                    keyboardType: TextInputType.phone,
+                    prefixText: "+94",
+                    hint: "7X XXX XXXX",
                   ),
                   const SizedBox(height: 20),
 
-                  // Password Section
                   Row(
                     children: [
-                      _buildLabel("Password"),
+                      const Text("Password", style: TextStyle(color: AppColors.textGray, fontSize: 12)),
                       const SizedBox(width: 12),
-                      GestureDetector(
-                        onTap: () => setState(() => _showPasswordFields = !_showPasswordFields),
-                        child: const Text(
-                          "New Password",
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.linkBlue,
-                            decoration: TextDecoration.underline,
+                      if (!_showPasswordFields)
+                        GestureDetector(
+                          onTap: () => setState(() => _showPasswordFields = true),
+                          child: const Text(
+                            "Change password",
+                            style: TextStyle(fontSize: 12, color: AppColors.linkBlue, decoration: TextDecoration.underline),
                           ),
                         ),
-                      ),
                     ],
                   ),
                   const SizedBox(height: 6),
-                  
+
                   if (_showPasswordFields) ...[
-                    _buildTextField(_passwordController, hint: "New Password", isPassword: true),
-                    const SizedBox(height: 14),
-                    _buildLabel("Confirm New Password"),
-                    _buildTextField(_confirmPasswordController, hint: "Confirm New Password", isPassword: true),
-                  ] else ...[
-                    TextField(
-                      controller: TextEditingController(text: '••••••••'),
-                      enabled: false,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: AppColors.darkNavyCard,
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10),
-                          borderSide: const BorderSide(color: AppColors.textFieldBorder),
-                        ),
-                      ),
+                    CustomTextField(
+                      label: "",
+                      controller: _passwordController,
+                      isPassword: true,
+                      hint: "New password",
                     ),
                     const SizedBox(height: 12),
-                    GestureDetector(
-                      onTap: () => setState(() => _showPasswordFields = true),
-                      child: const Text(
-                        "Need to change password?",
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.linkBlue,
-                          decoration: TextDecoration.underline,
-                        ),
-                      ),
+                    CustomTextField(
+                      label: "",
+                      controller: _confirmPasswordController,
+                      isPassword: true,
+                      hint: "Confirm new password",
                     ),
-                  ],
+                  ] else
+                    CustomTextField(
+                      label: "",
+                      controller: TextEditingController(text: '••••••••'),
+                      enabled: false,
+                    ),
 
                   const SizedBox(height: 28),
                   CustomButton(
@@ -360,24 +293,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     isLoading: _isLoading,
                   ),
                   const SizedBox(height: 20),
-                  
+
                   if (_isBioAvailable) ...[
-                    _buildLabel("Security"),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: AppColors.darkNavyCard,
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(color: AppColors.textFieldBorder),
-                      ),
+                    const Text("Security", style: TextStyle(color: AppColors.textGray, fontSize: 12)),
+                    const SizedBox(height: 6),
+                    AppCard(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Row(
                             children: [
-                              Icon(Icons.fingerprint, color: Colors.white, size: 20),
+                              Icon(Icons.fingerprint, color: AppColors.textWhite, size: 20),
                               SizedBox(width: 12),
-                              Text("Biometric Login", style: TextStyle(color: Colors.white, fontSize: 14)),
+                              Text("Biometric Login", style: TextStyle(color: AppColors.textWhite, fontSize: 14)),
                             ],
                           ),
                           Switch(
@@ -385,15 +314,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             activeThumbColor: AppColors.primaryBlue,
                             onChanged: (value) async {
                               await _bio.setEnabled(value);
+                              if (!mounted) return;
                               setState(() => _isBioEnabled = value);
-                              if (!value) {
-                                // If disabling, we could clear secure storage, 
-                                // but logout handles that too if bioEnabled is false.
-                                // For now just changing the preference is enough.
-                                ToastService.show(context, "Biometric login disabled");
-                              } else {
-                                ToastService.show(context, "Biometric login enabled");
-                              }
+                              ToastService.show(
+                                context,
+                                value ? "Biometric login enabled" : "Biometric login disabled",
+                              );
                             },
                           ),
                         ],
@@ -407,15 +333,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onTap: () => Navigator.pop(context),
                       child: const Text(
                         "Cancel & Back to Home",
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textGray,
-                          decoration: TextDecoration.underline,
-                        ),
+                        style: TextStyle(fontSize: 13, color: AppColors.textGray, decoration: TextDecoration.underline),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
@@ -424,40 +346,4 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
-
-  Widget _buildLabel(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Text(
-        text,
-        style: const TextStyle(fontSize: 13, color: AppColors.textGray),
-      ),
-    );
-  }
-
-  Widget _buildTextField(TextEditingController controller,
-      {String? hint, bool isPassword = false, TextInputType? keyboardType}) {
-    return TextField(
-      controller: controller,
-      obscureText: isPassword,
-      keyboardType: keyboardType,
-      style: const TextStyle(color: Colors.white),
-      decoration: InputDecoration(
-        hintText: hint,
-        hintStyle: const TextStyle(color: Colors.white24),
-        filled: true,
-        fillColor: AppColors.darkNavyCard,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.textFieldBorder),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(10),
-          borderSide: const BorderSide(color: AppColors.primaryBlue),
-        ),
-      ),
-    );
-  }
 }
-

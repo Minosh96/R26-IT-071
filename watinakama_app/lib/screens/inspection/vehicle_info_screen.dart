@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../constants/app_colors.dart';
 import '../../widgets/inspection_app_bar.dart';
 import '../../widgets/progress_stepper.dart';
+import '../../widgets/app_card.dart';
+import '../../widgets/custom_button.dart';
 import '../../services/auth_service.dart';
 import '../../widgets/custom_toast.dart';
 
@@ -14,13 +17,38 @@ class VehicleInfoScreen extends StatefulWidget {
 
 class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
   final AuthService _auth = AuthService();
-  final _makeController = TextEditingController();
-  final _modelController = TextEditingController();
-  final _ownersController = TextEditingController();
-  final _mileageController = TextEditingController();
-  final _listedPriceController = TextEditingController();
+  final TextEditingController _ownersController = TextEditingController();
+  final TextEditingController _mileageController = TextEditingController();
+  final TextEditingController _listedPriceController = TextEditingController();
   
+  String _selectedMake = '';
+  String _selectedModel = '';
+  
+  final Map<String, List<String>> _vehicleDataMap = {
+    'Toyota': ['Corolla', 'Camry', 'Prius', 'Yaris', 'Aqua', 'Hilux', 'Fortuner', 'Land Cruiser', 'Prado', 'Vitz', 'Raize'],
+    'Suzuki': ['Alto', 'Wagon R', 'Swift', 'Baleno', 'Celerio', 'Ignis', 'Vitara', 'Grand Vitara', 'Brezza', 'Ertiga', 'XL6', 'Jimny', 'Spacia', 'Hustler', 'Carry'],
+    'Honda': ['Civic', 'Accord', 'Fit (Jazz)', 'City', 'CR-V', 'HR-V', 'BR-V', 'Insight', 'Freed'],
+    'Nissan': ['Sunny', 'Altima', 'Teana', 'X-Trail', 'Qashqai', 'Patrol', 'Leaf', 'Navara', 'Juke'],
+    'Mitsubishi Motors': ['Lancer', 'Outlander', 'Pajero', 'Montero Sport', 'Eclipse Cross', 'Mirage'],
+    'Mazda': ['Mazda2', 'Mazda3', 'Mazda6', 'CX-3', 'CX-5', 'CX-8', 'CX-9'],
+    'Hyundai': ['i10', 'i20', 'i30', 'Accent', 'Elantra', 'Sonata', 'Tucson', 'Santa Fe', 'Creta'],
+    'Kia': ['Picanto', 'Rio', 'Cerato', 'Seltos', 'Sportage', 'Sorento', 'Carnival'],
+    'Ford': ['Fiesta', 'Focus', 'Mustang', 'Ranger', 'Everest', 'Explorer', 'F-150'],
+    'Chevrolet': ['Spark', 'Aveo', 'Cruze', 'Malibu', 'Tahoe', 'Silverado'],
+    'BMW': ['1 Series', '3 Series', '5 Series', '7 Series', 'X1', 'X3', 'X5', 'X7'],
+    'Mercedes-Benz': ['A-Class', 'C-Class', 'E-Class', 'S-Class', 'GLA', 'GLC', 'GLE', 'GLS', 'G-Class'],
+    'Audi': ['A3', 'A4', 'A6', 'A8', 'Q2', 'Q3', 'Q5', 'Q7'],
+    'Volkswagen': ['Polo', 'Golf', 'Passat', 'Jetta', 'Tiguan', 'Touareg'],
+    'Tata Motors': ['Nano', 'Tiago', 'Tigor', 'Nexon', 'Harrier', 'Safari'],
+    'Mahindra': ['Bolero', 'Scorpio', 'Thar', 'XUV300', 'XUV500', 'XUV700'],
+    'Tesla': ['Model S', 'Model 3', 'Model X', 'Model Y', 'Cybertruck'],
+    'Subaru': ['Impreza', 'Legacy', 'Forester', 'Outback', 'XV (Crosstrek)'],
+    'Isuzu': ['D-Max', 'MU-X', 'Elf (truck)'],
+    'Peugeot': ['208', '308', '508', '2008', '3008', '5008'],
+  };
+
   int _selectedMafYear = 2015;
+
   int _selectedRegYear = 2015;
   String _selectedBNR = 'Brand New';
   bool _powerShutters = false;
@@ -46,18 +74,12 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
   }
 
   void _handleNext() {
-    if (_makeController.text.isEmpty || 
-        _modelController.text.isEmpty || 
-        _ownersController.text.isEmpty || 
-        _mileageController.text.isEmpty || 
-        _listedPriceController.text.isEmpty) {
-      ToastService.show(context, "Please fill in all required fields", isError: true);
-      return;
-    }
+    // TODO: re-enable required-field validation once testing is done.
 
     Navigator.pushNamed(context, '/inspection/audio', arguments: {
-      'make': _makeController.text,
-      'model': _modelController.text,
+      'make': _selectedMake,
+      'model': _selectedModel,
+
       'maf_year': _selectedMafYear,
       'reg_year': _selectedRegYear,
       'previous_owners': int.tryParse(_ownersController.text) ?? 1,
@@ -71,13 +93,34 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
 
   @override
   void dispose() {
-    _makeController.dispose();
-    _modelController.dispose();
     _ownersController.dispose();
     _mileageController.dispose();
     _listedPriceController.dispose();
     super.dispose();
   }
+
+  void _showSearchableDropdown({
+    required String title,
+    required List<String> items,
+    required Function(String) onSelected,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.darkNavySurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return _SearchableListModal(
+          title: title,
+          items: items,
+          onSelected: onSelected,
+        );
+      },
+    );
+  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -110,27 +153,52 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                      color: AppColors.textWhite,
                     ),
                   ),
                   const SizedBox(height: 20),
                   
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF1A2035),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                  AppCard(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildLabel("Make"),
-                        _buildTextField(_makeController, "Suzuki"),
+                        _buildSelectionField(
+                          value: _selectedMake,
+                          hint: "Select Make",
+                          onTap: () {
+                            _showSearchableDropdown(
+                              title: "Select Vehicle Make",
+                              items: _vehicleDataMap.keys.toList()..sort(),
+                              onSelected: (val) {
+                                setState(() {
+                                  _selectedMake = val;
+                                  _selectedModel = ''; // Reset model when make changes
+                                });
+                              },
+                            );
+                          },
+                        ),
                         const SizedBox(height: 14),
                         
                         _buildLabel("Model"),
-                        _buildTextField(_modelController, "Alto"),
+                        _buildSelectionField(
+                          value: _selectedModel,
+                          hint: _selectedMake.isEmpty ? "Select Make first" : "Select Model",
+                          onTap: _selectedMake.isEmpty 
+                            ? null 
+                            : () {
+                                _showSearchableDropdown(
+                                  title: "Select $_selectedMake Model",
+                                  items: _vehicleDataMap[_selectedMake]!..sort(),
+                                  onSelected: (val) {
+                                    setState(() => _selectedModel = val);
+                                  },
+                                );
+                              },
+                        ),
                         const SizedBox(height: 14),
+
                         
                         Row(
                           children: [
@@ -168,15 +236,36 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
                         const SizedBox(height: 14),
                         
                         _buildLabel("Total Previous Owners"),
-                        _buildTextField(_ownersController, "e.g. 2", keyboardType: TextInputType.number),
+                        _buildTextField(
+                          _ownersController,
+                          "e.g. 2",
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(2),
+                          ],
+                        ),
                         const SizedBox(height: 14),
-                        
+
                         _buildLabel("Mileage (km)"),
-                        _buildTextField(_mileageController, "e.g. 85000", keyboardType: TextInputType.number),
+                        _buildTextField(
+                          _mileageController,
+                          "e.g. 85000",
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(7),
+                          ],
+                        ),
                         const SizedBox(height: 14),
-                        
+
                         _buildLabel("Listed Price (Million LKR)"),
-                        _buildTextField(_listedPriceController, "e.g. 3.89", keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+                        _buildTextField(
+                          _listedPriceController,
+                          "e.g. 3.89",
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: [_decimalInputFormatter],
+                        ),
                         const SizedBox(height: 14),
                         
                         _buildLabel("Vehicle Import Condition"),
@@ -198,7 +287,7 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
                               child: CheckboxListTile(
                                 value: _powerShutters,
                                 onChanged: (val) => setState(() => _powerShutters = val!),
-                                title: const Text("Power Shutters", style: TextStyle(color: Colors.white, fontSize: 13)),
+                                title: const Text("Power Shutters", style: TextStyle(color: AppColors.textWhite, fontSize: 13)),
                                 activeColor: AppColors.primaryBlue,
                                 contentPadding: EdgeInsets.zero,
                                 controlAffinity: ListTileControlAffinity.leading,
@@ -208,7 +297,7 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
                               child: CheckboxListTile(
                                 value: _powerMirrors,
                                 onChanged: (val) => setState(() => _powerMirrors = val!),
-                                title: const Text("Power Mirrors", style: TextStyle(color: Colors.white, fontSize: 13)),
+                                title: const Text("Power Mirrors", style: TextStyle(color: AppColors.textWhite, fontSize: 13)),
                                 activeColor: AppColors.primaryBlue,
                                 contentPadding: EdgeInsets.zero,
                                 controlAffinity: ListTileControlAffinity.leading,
@@ -225,17 +314,11 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      ElevatedButton(
+                      CustomButton(
+                        text: "Next",
                         onPressed: _handleNext,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF2E7D32),
-                          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                        ),
-                        child: const Text(
-                          "Next",
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                        ),
+                        fullWidth: false,
+                        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                       ),
                     ],
                   ),
@@ -256,14 +339,53 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String hint, {TextInputType keyboardType = TextInputType.text}) {
+  Widget _buildSelectionField({required String value, required String hint, VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppColors.darkNavyCard,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.textFieldBorder.withValues(alpha: 0.5)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              value.isEmpty ? hint : value,
+              style: TextStyle(
+                color: value.isEmpty ? AppColors.textFaint : AppColors.textWhite,
+                fontSize: 14,
+              ),
+            ),
+            const Icon(Icons.keyboard_arrow_down, color: AppColors.textGray, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static final _decimalInputFormatter = TextInputFormatter.withFunction((oldValue, newValue) {
+    if (newValue.text.isEmpty) return newValue;
+    return RegExp(r'^\d{0,7}(\.\d{0,2})?$').hasMatch(newValue.text) ? newValue : oldValue;
+  });
+
+  Widget _buildTextField(
+    TextEditingController controller,
+    String hint, {
+    TextInputType keyboardType = TextInputType.text,
+    List<TextInputFormatter>? inputFormatters,
+  }) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
-      style: const TextStyle(color: Colors.white),
+      inputFormatters: inputFormatters,
+      style: const TextStyle(color: AppColors.textWhite),
       decoration: InputDecoration(
         hintText: hint,
-        hintStyle: const TextStyle(color: Colors.white24, fontSize: 14),
+        hintStyle: const TextStyle(color: AppColors.textFaint, fontSize: 14),
         filled: true,
         fillColor: AppColors.darkNavyCard,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
@@ -277,7 +399,7 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
       initialValue: value,
       items: items.map((year) => DropdownMenuItem(
         value: year,
-        child: Text(year.toString(), style: const TextStyle(color: Colors.white, fontSize: 14)),
+        child: Text(year.toString(), style: const TextStyle(color: AppColors.textWhite, fontSize: 14)),
       )).toList(),
       onChanged: onChanged,
       dropdownColor: AppColors.darkNavyCard,
@@ -298,7 +420,7 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
         child: Container(
           height: 44,
           decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF1E3A5F) : AppColors.darkNavyCard,
+            color: isSelected ? AppColors.primaryBlueMuted : AppColors.darkNavyCard,
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: isSelected ? AppColors.primaryBlue : AppColors.textFieldBorder,
@@ -309,7 +431,7 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
             child: Text(
               option,
               style: TextStyle(
-                color: isSelected ? Colors.white : AppColors.textGray,
+                color: isSelected ? AppColors.primaryBlue : AppColors.textGray,
                 fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
               ),
             ),
@@ -320,26 +442,91 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
   }
 }
 
-class StepWavePainter extends CustomPainter {
-  final Color color;
-  StepWavePainter({required this.color});
+class _SearchableListModal extends StatefulWidget {
+  final String title;
+  final List<String> items;
+  final Function(String) onSelected;
+
+  const _SearchableListModal({
+    required this.title,
+    required this.items,
+    required this.onSelected,
+  });
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()..color = color..style = PaintingStyle.fill;
-    final path = Path();
-    path.moveTo(0, size.height);
-    path.lineTo(0, size.height * 0.4);
-    path.cubicTo(
-      size.width * 0.3, size.height * 0.1,
-      size.width * 0.6, size.height * 0.9,
-      size.width, size.height * 0.3,
-    );
-    path.lineTo(size.width, size.height);
-    path.close();
-    canvas.drawPath(path, paint);
+  State<_SearchableListModal> createState() => _SearchableListModalState();
+}
+
+class _SearchableListModalState extends State<_SearchableListModal> {
+  late List<String> _filteredItems;
+  final _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _filteredItems = widget.items;
+  }
+
+  void _filter(String query) {
+    setState(() {
+      _filteredItems = widget.items
+          .where((item) => item.toLowerCase().contains(query.toLowerCase()))
+          .toList();
+    });
   }
 
   @override
-  bool shouldRepaint(CustomPainter oldDelegate) => false;
+  Widget build(BuildContext context) {
+    return Container(
+      height: MediaQuery.of(context).size.height * 0.7,
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                widget.title,
+                style: const TextStyle(color: AppColors.textWhite, fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+              IconButton(
+                icon: const Icon(Icons.close, color: AppColors.textWhite),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _searchController,
+            onChanged: _filter,
+            style: const TextStyle(color: AppColors.textWhite),
+            decoration: InputDecoration(
+              hintText: "Search...",
+              hintStyle: const TextStyle(color: AppColors.textFaint),
+              prefixIcon: const Icon(Icons.search, color: AppColors.textGray),
+              filled: true,
+              fillColor: AppColors.darkNavyCard,
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _filteredItems.length,
+              itemBuilder: (context, index) {
+                return ListTile(
+                  title: Text(_filteredItems[index], style: const TextStyle(color: AppColors.textWhite)),
+                  onTap: () {
+                    widget.onSelected(_filteredItems[index]);
+                    Navigator.pop(context);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
+

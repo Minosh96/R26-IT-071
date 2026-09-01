@@ -2,8 +2,13 @@ import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import '../../widgets/inspection_app_bar.dart';
 import '../../widgets/progress_stepper.dart';
+import '../../widgets/app_card.dart';
+import '../../widgets/nav_button_row.dart';
+import '../../widgets/custom_button.dart';
 import '../../services/auth_service.dart';
 import '../../services/api_service.dart';
+import '../../services/inspection_history_service.dart';
+import '../../models/inspection_record.dart';
 
 class ResultsScreen extends StatefulWidget {
   const ResultsScreen({super.key});
@@ -14,13 +19,16 @@ class ResultsScreen extends StatefulWidget {
 
 class _ResultsScreenState extends State<ResultsScreen> {
   Map<String, dynamic> _vehicleData = {};
-  // ignore: unused_field
-  final Map<String, dynamic> _valuationResult = {};
+  Map<String, dynamic> _valuationResult = {};
   bool _isLoading = true;
+  bool _hasError = false;
+  String _errorMessage = '';
   String _userName = '';
   String? _profilePicPath;
   final AuthService _auth = AuthService();
   final ApiService _apiService = ApiService();
+  final InspectionHistoryService _historyService = InspectionHistoryService();
+  bool _savedToHistory = false;
 
   // Results from all components
   double _fairValueMillion = 0;
@@ -40,6 +48,31 @@ class _ResultsScreenState extends State<ResultsScreen> {
     });
   }
 
+  double _parseConfidence(dynamic rawConfidence) {
+    if (rawConfidence == null) return 0.0;
+    if (rawConfidence is num) {
+      double val = rawConfidence.toDouble();
+      return val <= 1.0 ? val : val / 100.0;
+    }
+    if (rawConfidence is String) {
+      final cleaned = rawConfidence.replaceAll('%', '').trim();
+      double? parsed = double.tryParse(cleaned);
+      if (parsed != null) {
+        return parsed <= 1.0 ? parsed : parsed / 100.0;
+      }
+    }
+    return 0.0;
+  }
+
+  double _parseScore(dynamic rawScore, double defaultValue) {
+    if (rawScore == null) return defaultValue;
+    if (rawScore is num) return rawScore.toDouble();
+    if (rawScore is String) {
+      return double.tryParse(rawScore.replaceAll('%', '').trim()) ?? defaultValue;
+    }
+    return defaultValue;
+  }
+
   Future<void> _loadDataAndFetch() async {
     final name = await _auth.getUserName();
     final pic = await _auth.getProfilePicPath();
@@ -50,10 +83,11 @@ class _ResultsScreenState extends State<ResultsScreen> {
         _vehicleData = args; // The whole args map is the vehicle data now
         _userName = name;
         _profilePicPath = pic;
-        _bodyConditionScore = (args['body_score'] ?? 0).toDouble();
-        _engineConditionScore = (args['confidence'] ?? 0).toDouble() * 100; // placeholder for engine score
-        _vinCondition = (args['vin_status'] == 'original') ? 'Original' : 'Unknown';
+        _bodyConditionScore = _parseScore(args['body_score'], 0.0);
+        _engineConditionScore = _parseScore(args['mhs_score'], _parseConfidence(args['confidence']) * 100);
+        _vinCondition = (args['vin_status']?.toString().toLowerCase() == 'original') ? 'Original' : (args['vin_status'] ?? 'Unknown');
       });
+
     }
     _fetchValuation();
   }
@@ -76,42 +110,76 @@ class _ResultsScreenState extends State<ResultsScreen> {
       'vin_status': args['vin_status'] ?? 'original',
     };
 
-    final result = await _apiService.getValuation(requestBody);
+    Map<String, dynamic> result;
+    try {
+      result = await _apiService.getValuation(requestBody);
+    } catch (_) {
+      result = {'status': 'error'};
+    }
+
+    if (!mounted) return;
 
     if (result['status'] == 'success' || result['verdict'] != null) {
       setState(() {
+        _hasError = false;
         _fairValueMillion = (result['fair_value_lkr'] ?? 0) / 1000000;
         _rangeMinMillion = (result['negotiation_min_lkr'] ?? 0) / 1000000;
         _rangeMaxMillion = (result['negotiation_max_lkr'] ?? 0) / 1000000;
-        _bodyConditionScore = (args['body_score'] ?? 100).toDouble();
-        _engineConditionScore = (args['mhs_score'] ?? 100).toDouble();
-        _vinCondition = args['vin_status'] ?? 'original';
+        _bodyConditionScore = _parseScore(args['body_score'], 100.0);
+        _engineConditionScore = _parseScore(args['mhs_score'], _parseConfidence(args['confidence']) * 100);
+
+        // Map VIN status to display label
+        String vin = args['vin_status']?.toString().toLowerCase() ?? 'unknown';
+        if (vin == 'original') {
+          _vinCondition = 'Original';
+        } else if (vin == 'need review' || vin == 'needs review') {
+          _vinCondition = 'Needs Review';
+        } else if (vin == 'altered') {
+          _vinCondition = 'Altered';
+        } else {
+          _vinCondition = vin.toUpperCase();
+        }
+
         _verdict = result['verdict'] ?? 'FAIR_PRICE';
-        _explanation = result['explanation'] ?? '';
+        _explanation = result['verdict_message'] ?? result['explanation'] ?? '';
         _isLoading = false;
+        _valuationResult = result;
       });
+      _saveToHistory(args);
     } else {
-      // Use demo data if API fails
+      // Market valuation failed - show the real VIN/body/engine results we do have,
+      // but surface an explicit error instead of a made-up price.
       setState(() {
-        _fairValueMillion = 3.85;
-        _rangeMinMillion = 3.6;
-        _rangeMaxMillion = 4.1;
+        _hasError = true;
+        _errorMessage = result['message'] ?? 'Could not reach the valuation service.';
+        _bodyConditionScore = _parseScore(args['body_score'], 0.0);
+        _engineConditionScore = _parseScore(args['mhs_score'], _parseConfidence(args['confidence']) * 100);
+
+        String vin = args['vin_status']?.toString().toLowerCase() ?? 'unknown';
+        _vinCondition = (vin == 'original') ? 'Original' : 'Needs Review';
+
         _isLoading = false;
       });
     }
   }
 
-  void _usePlaceholders() {
-    setState(() {
-      _fairValueMillion = 3.85;
-      _rangeMinMillion = 3.6;
-      _rangeMaxMillion = 4.1;
-      _bodyConditionScore = 80;
-      _engineConditionScore = 50;
-      _vinCondition = 'Original';
-      _verdict = 'FAIR_PRICE';
-      _isLoading = false;
-    });
+  Future<void> _saveToHistory(Map<String, dynamic> args) async {
+    if (_savedToHistory) return;
+    _savedToHistory = true;
+
+    await _historyService.addInspection(InspectionRecord(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      date: DateTime.now(),
+      make: args['make']?.toString() ?? '',
+      model: args['model']?.toString() ?? '',
+      fairValueMillion: _fairValueMillion,
+      rangeMinMillion: _rangeMinMillion,
+      rangeMaxMillion: _rangeMaxMillion,
+      verdict: _verdict,
+      bodyConditionScore: _bodyConditionScore,
+      engineConditionScore: _engineConditionScore,
+      vinCondition: _vinCondition,
+    ));
   }
 
   @override
@@ -133,9 +201,19 @@ class _ResultsScreenState extends State<ResultsScreen> {
             child: const ProgressStepper(currentStep: 4),
           ),
           if (_isLoading)
-            const Expanded(
+            Expanded(
               child: Center(
-                child: CircularProgressIndicator(color: AppColors.primaryBlue),
+                child: SizedBox(
+                  width: 200,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(4),
+                    child: const LinearProgressIndicator(
+                      color: AppColors.primaryBlue,
+                      backgroundColor: AppColors.darkNavySurface,
+                      minHeight: 6,
+                    ),
+                  ),
+                ),
               ),
             )
           else
@@ -150,48 +228,24 @@ class _ResultsScreenState extends State<ResultsScreen> {
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: Colors.white,
+                        color: AppColors.textWhite,
                       ),
                     ),
                     const SizedBox(height: 16),
-                    _buildFairValueCard(),
+                    if (_hasError) _buildValuationErrorCard() else _buildFairValueCard(),
                     const SizedBox(height: 16),
-                    _buildDepreciationFactorsCard(),
+                    if (!_hasError) ...[
+                      _buildDepreciationFactorsCard(),
+                      const SizedBox(height: 16),
+                    ],
+                    _buildDetailedReportCard(),
                     const SizedBox(height: 16),
                     ..._buildConditionCards(),
                     const SizedBox(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        ElevatedButton(
-                          onPressed: () => Navigator.pop(context),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF1A1A2E),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(24),
-                            ),
-                          ),
-                          child: const Text("Back"),
-                        ),
-                        ElevatedButton(
-                          onPressed: () => Navigator.pushNamedAndRemoveUntil(
-                            context, 
-                            '/home', 
-                            (route) => false
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2E7D32),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(24),
-                            ),
-                          ),
-                          child: const Text("Finish"),
-                        ),
-                      ],
+                    NavButtonRow(
+                      onBack: () => Navigator.pop(context),
+                      onNext: () => Navigator.pushNamedAndRemoveUntil(context, '/home', (route) => false),
+                      nextLabel: "Finish",
                     ),
                     const SizedBox(height: 20),
                   ],
@@ -203,14 +257,151 @@ class _ResultsScreenState extends State<ResultsScreen> {
     );
   }
 
-  Widget _buildFairValueCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A2035),
-        borderRadius: BorderRadius.circular(16),
+  Widget _buildDetailedReportCard() {
+    return AppCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            "Detailed Analysis Report",
+            style: TextStyle(color: AppColors.textWhite, fontWeight: FontWeight.bold, fontSize: 15),
+          ),
+          const SizedBox(height: 12),
+          _buildDetailItem(
+            "Engine Fault",
+            _valuationResult['engine_description'] ?? "No faults detected",
+            AppColors.statusColorFor(_engineConditionScore),
+          ),
+          _buildDetailItem(
+            "Body Damage",
+            _valuationResult['body_damage_category'] != null 
+              ? "Category: ${_valuationResult['body_damage_category'].toString().toUpperCase()}"
+              : "No significant damage",
+            AppColors.statusColorFor(_bodyConditionScore),
+          ),
+          _buildDetailItem(
+            "VIN Status",
+            _vinCondition == 'Original' ? "Legally verified" : "Verification required",
+            _vinCondition == 'Original' ? AppColors.statusGreen : AppColors.statusRed,
+          ),
+          if (_valuationResult['vin_warning'] != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, bottom: 8),
+              child: Text(
+                _valuationResult['vin_warning'],
+                style: const TextStyle(color: AppColors.statusAmber, fontSize: 11, fontStyle: FontStyle.italic),
+              ),
+            ),
+          const Divider(color: Colors.black12, height: 24),
+
+          Text(
+            _explanation.isNotEmpty
+                ? _explanation
+                : (_hasError
+                    ? "VIN, body and engine analysis are complete; market pricing could not be calculated."
+                    : "Analysis complete. The vehicle condition has been factored into the fair market value."),
+            style: const TextStyle(color: AppColors.textGray, fontSize: 13, height: 1.4),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildDetailItem(String title, String value, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              title,
+              style: const TextStyle(color: AppColors.textGray, fontSize: 12),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+
+  Widget _buildValuationErrorCard() {
+    return AppCard(
+      padding: const EdgeInsets.all(20),
+      borderColor: AppColors.statusAmber,
+      child: Column(
+        children: [
+          const Icon(Icons.error_outline, color: AppColors.statusAmber, size: 40),
+          const SizedBox(height: 12),
+          const Text(
+            "Market Value Unavailable",
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _errorMessage,
+            style: const TextStyle(color: AppColors.textGray, fontSize: 13),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          CustomButton(
+            text: "Retry",
+            fullWidth: false,
+            onPressed: () {
+              setState(() => _isLoading = true);
+              _fetchValuation();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFairValueCard() {
+    if (_verdict == 'DO_NOT_BUY') {
+      return AppCard(
+        padding: const EdgeInsets.all(20),
+        borderColor: AppColors.statusRed,
+        child: Column(
+          children: [
+            const Icon(
+              Icons.warning_amber_rounded,
+              color: AppColors.statusRed,
+              size: 48,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              "VALUATION BLOCKED",
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppColors.statusRed,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _explanation.isNotEmpty ? _explanation : "This vehicle is blocked from valuation due to critical compliance/security risks.",
+              style: const TextStyle(color: AppColors.textGray, fontSize: 13),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            _buildVerdictChip(),
+          ],
+        ),
+      );
+    }
+
+    return AppCard(
+      padding: const EdgeInsets.all(20),
       child: Column(
         children: [
           const Text(
@@ -224,7 +415,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
             style: const TextStyle(
               fontSize: 32,
               fontWeight: FontWeight.bold,
-              color: Colors.white,
+              color: AppColors.textWhite,
             ),
             textAlign: TextAlign.center,
           ),
@@ -248,14 +439,14 @@ class _ResultsScreenState extends State<ResultsScreen> {
     Color textColor;
     String label = _verdict.replaceAll('_', ' ');
 
-    if (_verdict == 'OVERPRICED') {
-      bgColor = AppColors.statusRed.withOpacity(0.2);
+    if (_verdict == 'OVERPRICED' || _verdict == 'DO_NOT_BUY') {
+      bgColor = AppColors.statusRed.withValues(alpha: 0.2);
       textColor = AppColors.statusRed;
     } else if (_verdict == 'GOOD_DEAL') {
-      bgColor = AppColors.statusGreen.withOpacity(0.2);
+      bgColor = AppColors.statusGreen.withValues(alpha: 0.2);
       textColor = AppColors.statusGreen;
     } else {
-      bgColor = AppColors.primaryBlue.withOpacity(0.2);
+      bgColor = AppColors.primaryBlue.withValues(alpha: 0.2);
       textColor = AppColors.primaryBlue;
     }
 
@@ -277,25 +468,39 @@ class _ResultsScreenState extends State<ResultsScreen> {
   }
 
   Widget _buildDepreciationFactorsCard() {
+    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ?? {};
+    
+    // Calculate percentages based on deductions or scores
+    int bodyDep = (_valuationResult['body_deduction_lkr'] != null && _fairValueMillion > 0)
+        ? -((_valuationResult['body_deduction_lkr'] as num) / (_fairValueMillion * 1000000) * 100).round()
+        : -((100 - _bodyConditionScore) / 5).round();
+        
+    int mechDep = (_valuationResult['engine_deduction_lkr'] != null && _fairValueMillion > 0)
+        ? -((_valuationResult['engine_deduction_lkr'] as num) / (_fairValueMillion * 1000000) * 100).round()
+        : -((100 - _engineConditionScore) / 5).round();
+
+    // Estimate mileage and year depreciation
+    int mileageKm = args['mileage_km'] ?? 80000;
+    int mileageDep = -(mileageKm / 10000).round();
+    
+    int year = args['maf_year'] ?? 2015;
+    int yearDep = -(2026 - year);
+
     final factors = [
-      {'label': 'Body Condition', 'value': -8, 'color': AppColors.statusGreen},
-      {'label': 'Mileage', 'value': -12, 'color': AppColors.statusAmber},
-      {'label': 'Mechanical', 'value': -9, 'color': AppColors.statusAmber},
-      {'label': 'Year', 'value': -6, 'color': AppColors.primaryBlue},
+      {'label': 'Body Condition', 'value': bodyDep, 'color': AppColors.statusColorFor(_bodyConditionScore)},
+      {'label': 'Mileage', 'value': mileageDep, 'color': AppColors.statusAmber},
+      {'label': 'Mechanical', 'value': mechDep, 'color': AppColors.statusColorFor(_engineConditionScore)},
+      {'label': 'Year', 'value': yearDep, 'color': AppColors.primaryBlue},
     ];
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A2035),
-        borderRadius: BorderRadius.circular(16),
-      ),
+
+    return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
             "Depreciation Factors",
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
+            style: TextStyle(color: AppColors.textWhite, fontWeight: FontWeight.bold, fontSize: 15),
           ),
           const SizedBox(height: 14),
           ...factors.map((f) => Padding(
@@ -303,10 +508,12 @@ class _ResultsScreenState extends State<ResultsScreen> {
                 child: Row(
                   children: [
                     SizedBox(
-                      width: 110,
+                      width: 130,
                       child: Text(
                         f['label'] as String,
-                        style: const TextStyle(color: Colors.white, fontSize: 13),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: AppColors.textWhite, fontSize: 12),
                       ),
                     ),
                     Expanded(
@@ -315,12 +522,12 @@ class _ResultsScreenState extends State<ResultsScreen> {
                           Container(
                             height: 8,
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade800,
+                              color: Colors.grey.shade300,
                               borderRadius: BorderRadius.circular(4),
                             ),
                           ),
                           FractionallySizedBox(
-                            widthFactor: (f['value'] as int).abs() / 20.0,
+                            widthFactor: ((f['value'] as int).abs() / 20.0).clamp(0.0, 1.0),
                             child: Container(
                               height: 8,
                               decoration: BoxDecoration(
@@ -365,39 +572,34 @@ class _ResultsScreenState extends State<ResultsScreen> {
     return data.map((item) {
       Color valueColor;
       if (item['type'] == 'vin') {
-        valueColor = (item['display'] == 'Original') ? AppColors.statusGreen : AppColors.statusRed;
+        valueColor = item['display'] == 'Original'
+            ? AppColors.statusGreen
+            : (item['display'] == 'Needs Review' ? AppColors.statusAmber : AppColors.statusRed);
       } else {
-        double score = item['score'] as double;
-        if (score >= 80) {
-          valueColor = AppColors.statusGreen;
-        } else if (score >= 50) {
-          valueColor = AppColors.statusAmber;
-        } else {
-          valueColor = AppColors.statusRed;
-        }
+        valueColor = AppColors.statusColorFor((item['score'] as num).toDouble());
       }
 
-      return Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A2035),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              item['label'] as String,
-              style: const TextStyle(color: Colors.white, fontSize: 14),
-            ),
-            Text(
-              item['display'] as String,
-              style: TextStyle(color: valueColor, fontWeight: FontWeight.bold, fontSize: 14),
-            ),
-          ],
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: AppCard(
+          radius: 12,
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                item['label'] as String,
+                style: const TextStyle(color: AppColors.textWhite, fontSize: 14),
+              ),
+              Text(
+                item['display'] as String,
+                style: TextStyle(color: valueColor, fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+            ],
+          ),
         ),
       );
     }).toList();
   }
 }
+

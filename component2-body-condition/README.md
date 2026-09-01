@@ -2,32 +2,11 @@
 
 This is the backend for automated vehicle physical inspection using AI.
 
-## Quick Start (Presentation Mode)
+## Installation & Running
 
-To show your supervisor that you have completed 50% of the backend, follow these steps:
+See [RUNNING.md](../RUNNING.md) at the repo root for setup and run instructions (the API must be started with `uvicorn main:app --port 8080`, not `python main.py`).
 
-### 1. Setup Environment
-```bash
-python -m venv venv
-venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-### 2. Download Training Data
-Run this to show that your system connects to Roboflow and fetches the latest data.
-```bash
-python download_dataset.py
-```
-
-### 3. Launch the API
-Start the server to show the "live" analysis system.
-```bash
-python main.py
-```
-Open your browser to `http://127.0.0.1:8000/docs` to see the Interactive API Documentation.
-
-### 4. Run a Prediction
-Show them how the AI "sees" a scratch or dent:
+To try a prediction from the command line instead of the API:
 ```bash
 python predict_local.py path/to/a/car_image.jpg
 ```

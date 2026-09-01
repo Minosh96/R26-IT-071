@@ -103,14 +103,15 @@ def get_body_deduction(body_score, repair_costs):
     """
     Map body score to damage category to provide explanation text.
     """
-    if body_score >= 80:
+    if body_score >= 100:
         category = "none"
-    elif body_score >= 60:
+    elif body_score >= 80:
         category = "minor"
-    elif body_score >= 40:
+    elif body_score >= 60:
         category = "moderate"
     else:
         category = "severe"
+
         
     categories = repair_costs.get("body_damage_categories", {})
     cat_data = categories.get(category, categories.get("none"))
@@ -167,6 +168,11 @@ def valuate(vehicle_input, listed_price_million, fault_class="healthy", confiden
             "verdict_message": "This vehicle VIN has been altered. This is a serious legal risk. Do not purchase.",
             "listed_price_lkr": int(listed_price_million * 1_000_000)
         }
+    elif vin_status in ["need review", "unknown", "needs review"]:
+        vin_warning = "VIN authenticity could not be fully verified. Proceed with caution and manual inspection."
+    else:
+        vin_warning = None
+
         
     # Step 2 — Load all models
     if preloaded_assets:
@@ -243,8 +249,10 @@ def valuate(vehicle_input, listed_price_million, fault_class="healthy", confiden
         "body_deduction_lkr": int(body_result["deduction_lkr"]),
 
         "vin_status": vin_status,
+        "vin_warning": vin_warning,
 
         "listed_price_lkr": listed_lkr,
+
         "listed_price_million": listed_price_million,
         "fair_value_lkr": fair_value_lkr,
         "price_difference_lkr": price_difference_lkr,

@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
-import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+
 import '../../constants/app_colors.dart';
 import '../../widgets/inspection_app_bar.dart';
 import '../../widgets/progress_stepper.dart';
@@ -11,6 +12,11 @@ import '../../services/auth_service.dart';
 import '../../widgets/custom_toast.dart';
 import '../../services/api_service.dart';
 import '../../widgets/loading_overlay.dart';
+import '../../widgets/app_card.dart';
+import '../../widgets/nav_button_row.dart';
+import '../../widgets/result_sheet.dart';
+import '../../widgets/score_badge.dart';
+import '../../utils/file_validation.dart';
 
 class AudioRecordingScreen extends StatefulWidget {
   const AudioRecordingScreen({super.key});
@@ -51,9 +57,9 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
   late AnimationController _waveController;
 
   final List<Map<String, dynamic>> _phases = [
-    {'key': 'engine_start', 'title': 'Engine Start', 'subtitle': 'Cranking & Cold Start', 'duration': 15},
-    {'key': 'idle', 'title': 'Idle Running', 'subtitle': 'Steady State Listening', 'duration': 30},
-    {'key': 'acceleration', 'title': 'Acceleration', 'subtitle': 'Light Throttle Press', 'duration': 10},
+    {'key': 'engine_start', 'title': 'Engine Start', 'duration': 15},
+    {'key': 'idle', 'title': 'Idle Running', 'duration': 30},
+    {'key': 'acceleration', 'title': 'Acceleration', 'duration': 10},
   ];
 
   @override
@@ -207,16 +213,57 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
   }
 
   Future<void> _stopRecording() async {
-    await _recorder.stop();
+    final path = await _recorder.stop();
     _timer?.cancel();
     setState(() {
       _isRecording = false;
       _isPaused = false;
       _phaseStatus[_activePhaseKey] = 'done';
+      if (path != null) {
+        _recordingPath = path;
+        _recordingPaths[_activePhaseKey] = path;
+        _recordingDurations[_activePhaseKey] = _recordingDuration;
+      }
     });
   }
 
+  Future<void> _pickAudioFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.any, // Use any to ensure files are visible on all devices
+      );
+
+
+      if (result != null && result.files.single.path != null) {
+        String path = result.files.single.path!;
+
+        final validationError = validateFileExtension(
+          path,
+          allowedAudioExtensions,
+          'WAV, MP3, M4A, or MP4 audio',
+        );
+        if (validationError != null) {
+          if (!mounted) return;
+          ToastService.show(context, validationError, isError: true);
+          return;
+        }
+
+        setState(() {
+          _audioFilePath = path;
+          _recordingPath = path;
+          _recordingDuration = const Duration(seconds: 5); // Minimum duration to show it's valid
+          _phaseStatus[_activePhaseKey] = 'done';
+          _recordingPaths[_activePhaseKey] = path;
+        });
+        ToastService.show(context, "Audio file selected");
+      }
+    } catch (e) {
+      ToastService.show(context, "Error picking audio file", isError: true);
+    }
+  }
+
   void _resetRecording() {
+
     if (_isRecording || _isPaused) {
       _recorder.stop();
       _timer?.cancel();
@@ -234,17 +281,36 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
   }
 
   Future<void> _handleNext() async {
-    if (_audioFilePath == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please record engine audio first')),
+    // TODO: re-enable required-stages validation once testing is done.
+
+    // Prepare paths for API - only include valid non-empty paths
+    Map<String, String> phasePaths = {};
+    _recordingPaths.forEach((key, path) {
+      if (path.isNotEmpty) {
+        phasePaths[key] = path;
+      }
+    });
+
+    if (phasePaths.isEmpty) {
+      Navigator.pushNamed(
+        context,
+        '/inspection/images',
+        arguments: {
+          ..._vehicleData,
+          'fault_class': null,
+          'confidence': null,
+          'mhs_score': null,
+          'audio_file': null,
+        },
       );
       return;
     }
 
     setState(() => _isAnalyzing = true);
 
-    final result = await _apiService.analyzeEngine(File(_audioFilePath!));
+    final result = await _apiService.analyzeEngine(phasePaths);
 
+    if (!mounted) return;
     setState(() {
       _engineResult = result;
       _isAnalyzing = false;
@@ -253,118 +319,60 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
     if (result['status'] == 'success') {
       _showEngineResult(result);
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Analysis failed: ${result["message"]}'),
-          backgroundColor: Colors.red,
-        ),
+      ToastService.show(
+        context,
+        'Analysis failed: ${result["message"] ?? result["error"] ?? result["reason"] ?? "Unknown error"}',
+        isError: true,
       );
     }
   }
 
   void _showEngineResult(Map<String, dynamic> result) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1A2035),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // MHS Score circle
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _getMHSColor(result['mhs_score']).withOpacity(0.2),
-                border: Border.all(
-                  color: _getMHSColor(result['mhs_score']),
-                  width: 3,
-                ),
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('${result["mhs_score"]}',
-                      style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: _getMHSColor(result['mhs_score']))),
-                  const Text('MHS',
-                      style: TextStyle(color: Colors.grey, fontSize: 12)),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Fault class badge
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              decoration: BoxDecoration(
-                color: _getMHSColor(result['mhs_score']).withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Text(
-                (result['fault_class'] as String)
-                    .toUpperCase()
-                    .replaceAll('_', ' '),
-                style: TextStyle(
-                  color: _getMHSColor(result['mhs_score']),
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(result['explanation'] ?? '',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.grey, fontSize: 13)),
-            const SizedBox(height: 8),
-            Text('Confidence: ${result["confidence_percent"]}',
-                style: const TextStyle(color: Colors.white70, fontSize: 12)),
-            const SizedBox(height: 24),
-            // Continue button
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2E7D32),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(24)),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                onPressed: () {
-                  Navigator.pop(context); // close bottom sheet
-                  Navigator.pushNamed(
-                    context,
-                    '/inspection/images',
-                    arguments: {
-                      ..._vehicleData,
-                      'fault_class': result['fault_class'],
-                      'confidence': result['confidence'],
-                      'mhs_score': result['mhs_score'],
-                      'audio_file': _audioFilePath,
-                    },
-                  );
-                },
-                child: const Text('Continue to Body Scan',
-                    style: TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+    final mhsScore = (result['mhs_score'] as num).toDouble();
+    final color = AppColors.statusColorFor(mhsScore);
 
-  Color _getMHSColor(dynamic score) {
-    final s = (score as num).toInt();
-    if (s >= 80) return const Color(0xFF00E676);
-    if (s >= 50) return const Color(0xFFFFB300);
-    return const Color(0xFFFF1744);
+    showResultSheet(
+      context,
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ScoreBadge(score: mhsScore, label: 'MHS'),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              (result['fault_class'] as String).toUpperCase().replaceAll('_', ' '),
+              style: TextStyle(color: color, fontWeight: FontWeight.bold),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(result['explanation'] ?? '',
+              textAlign: TextAlign.center, style: const TextStyle(color: AppColors.textGray, fontSize: 13)),
+          const SizedBox(height: 8),
+          Text('Confidence: ${result["confidence_percent"]}',
+              style: const TextStyle(color: AppColors.textGray, fontSize: 12)),
+        ],
+      ),
+      ctaLabel: 'Continue to Body Scan',
+      onCta: () {
+        Navigator.pop(context); // close bottom sheet
+        Navigator.pushNamed(
+          context,
+          '/inspection/images',
+          arguments: {
+            ..._vehicleData,
+            'fault_class': result['fault_class'],
+            'confidence': result['confidence'],
+            'mhs_score': result['mhs_score'],
+            'audio_file': _audioFilePath,
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -404,12 +412,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                 child: Column(
                   children: [
                     // Recording Card
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1A2035),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
+                    AppCard(
                       child: Column(
                         children: [
                           Container(
@@ -421,7 +424,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                             ),
                             child: Icon(
                               Icons.mic,
-                              color: _isRecording ? AppColors.statusRed : Colors.white,
+                              color: _isRecording ? AppColors.statusRed : AppColors.textWhite,
                               size: 28,
                             ),
                           ),
@@ -431,7 +434,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                             style: const TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.bold,
-                              color: Colors.white,
+                              color: AppColors.textWhite,
                               fontFamily: 'monospace',
                             ),
                           ),
@@ -442,10 +445,10 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                             height: 60,
                             width: double.infinity,
                             decoration: BoxDecoration(
-                              color: const Color(0xFF0D1117),
+                              color: const Color(0xFF0B0F17),
                               borderRadius: BorderRadius.circular(30),
                             ),
-                            child: _isRecording 
+                            child: _isRecording
                               ? AnimatedBuilder(
                                   animation: _waveController,
                                   builder: (context, child) {
@@ -477,23 +480,43 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                           const SizedBox(height: 12),
                           
                           // Controls
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          Wrap(
+                            alignment: WrapAlignment.center,
+                            spacing: 8,
+                            runSpacing: 8,
                             children: [
                               OutlinedButton(
                                 onPressed: _resetRecording,
                                 style: OutlinedButton.styleFrom(
                                   side: BorderSide(color: _recordingPath.isNotEmpty ? AppColors.statusRed : AppColors.textGray),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                 ),
                                 child: Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Icon(_recordingPath.isNotEmpty ? Icons.delete_outline : Icons.refresh, 
                                         size: 14, color: _recordingPath.isNotEmpty ? AppColors.statusRed : AppColors.textGray),
                                     const SizedBox(width: 4),
                                     Text(_recordingPath.isNotEmpty ? "Discard" : "Reset", 
-                                        style: TextStyle(color: _recordingPath.isNotEmpty ? AppColors.statusRed : AppColors.textGray)),
+                                        style: TextStyle(color: _recordingPath.isNotEmpty ? AppColors.statusRed : AppColors.textGray, fontSize: 13)),
+                                  ],
+                                ),
+                              ),
+                              
+                              OutlinedButton(
+                                onPressed: _pickAudioFile,
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: AppColors.textFieldBorder),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                                ),
+                                child: const Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.upload_file, size: 14, color: AppColors.textGray),
+                                    SizedBox(width: 4),
+                                    Text("Upload", style: TextStyle(color: AppColors.textGray, fontSize: 13)),
                                   ],
                                 ),
                               ),
@@ -502,13 +525,13 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                                 ElevatedButton(
                                   onPressed: _recordingPath.isNotEmpty ? _handleNext : _startRecording,
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: _recordingPath.isNotEmpty ? const Color(0xFF2E7D32) : AppColors.primaryBlue,
+                                    backgroundColor: AppColors.primaryBlue,
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                                   ),
                                   child: Text(
-                                    _recordingPath.isNotEmpty ? "Confirm & Next" : "Start", 
-                                    style: const TextStyle(color: Colors.white)
+                                    _recordingPath.isNotEmpty ? "Confirm" : "Start", 
+                                    style: const TextStyle(color: Colors.white, fontSize: 13)
                                   ),
                                 ),
                                 
@@ -516,15 +539,16 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                                 OutlinedButton(
                                   onPressed: _pauseRecording,
                                   style: OutlinedButton.styleFrom(
-                                    side: const BorderSide(color: Colors.white),
+                                    side: const BorderSide(color: AppColors.textFieldBorder),
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                   ),
                                   child: const Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Icon(Icons.pause, size: 14, color: Colors.white),
+                                      Icon(Icons.pause, size: 14, color: AppColors.textWhite),
                                       SizedBox(width: 4),
-                                      Text("Pause", style: TextStyle(color: Colors.white)),
+                                      Text("Pause", style: TextStyle(color: AppColors.textWhite, fontSize: 13)),
                                     ],
                                   ),
                                 ),
@@ -535,18 +559,19 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: AppColors.primaryBlue,
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                   ),
-                                  child: const Text("Resume", style: TextStyle(color: Colors.white)),
+                                  child: const Text("Resume", style: TextStyle(color: Colors.white, fontSize: 13)),
                                 ),
                                 ElevatedButton(
                                   onPressed: _stopRecording,
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFB71C1C),
+                                    backgroundColor: AppColors.statusRed,
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                   ),
                                   child: Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Container(
                                         width: 8,
@@ -554,7 +579,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                                         decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
                                       ),
                                       const SizedBox(width: 6),
-                                      const Text("Stop", style: TextStyle(color: Colors.white)),
+                                      const Text("Stop", style: TextStyle(color: Colors.white, fontSize: 13)),
                                     ],
                                   ),
                                 ),
@@ -562,11 +587,12 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                                 ElevatedButton(
                                   onPressed: _stopRecording,
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFB71C1C),
+                                    backgroundColor: AppColors.statusRed,
                                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
                                   ),
                                   child: Row(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
                                       Container(
                                         width: 8,
@@ -574,12 +600,13 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                                         decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
                                       ),
                                       const SizedBox(width: 6),
-                                      const Text("Stop", style: TextStyle(color: Colors.white)),
+                                      const Text("Stop", style: TextStyle(color: Colors.white, fontSize: 13)),
                                     ],
                                   ),
                                 ),
                             ],
                           ),
+
                         ],
                       ),
                     ),
@@ -596,9 +623,9 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                           margin: const EdgeInsets.only(bottom: 8),
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF1A2035),
+                            color: AppColors.darkNavySurface,
                             borderRadius: BorderRadius.circular(10),
-                            border: _activePhaseKey == phase['key'] 
+                            border: _activePhaseKey == phase['key']
                                 ? Border.all(color: AppColors.primaryBlue, width: 1) 
                                 : null,
                           ),
@@ -614,12 +641,13 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                                         children: [
                                           TextSpan(
                                             text: phase['title'],
-                                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
+                                            style: const TextStyle(color: AppColors.textWhite, fontWeight: FontWeight.bold, fontSize: 14),
                                           ),
-                                          TextSpan(
-                                            text: " - ${phase['subtitle']}",
-                                            style: const TextStyle(color: AppColors.textGray, fontSize: 13),
-                                          ),
+                                          if (phase['subtitle'] != null)
+                                            TextSpan(
+                                              text: " - ${phase['subtitle']}",
+                                              style: const TextStyle(color: AppColors.textGray, fontSize: 13),
+                                            ),
                                         ],
                                       ),
                                     ),
@@ -655,28 +683,9 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                     const SizedBox(height: 24),
                     
                     // Bottom Nav
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        ElevatedButton(
-                          onPressed: () => Navigator.pop(context),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF1A1A2E),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                          ),
-                          child: const Text("Back", style: TextStyle(color: Colors.white)),
-                        ),
-                        ElevatedButton(
-                          onPressed: _handleNext,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF2E7D32),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-                            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-                          ),
-                          child: const Text("Next", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                        ),
-                      ],
+                    NavButtonRow(
+                      onBack: () => Navigator.pop(context),
+                      onNext: _handleNext,
                     ),
                     const SizedBox(height: 20),
                   ],
@@ -703,14 +712,14 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: const Color(0xFF1A2035),
+          color: AppColors.darkNavySurface,
           borderRadius: BorderRadius.circular(10),
         ),
         child: Column(
           children: [
             Icon(icon, color: AppColors.textGray, size: 22),
             const SizedBox(height: 6),
-            Text(line1, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+            Text(line1, style: const TextStyle(color: AppColors.textWhite, fontSize: 10, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
             Text(line2, style: const TextStyle(color: AppColors.textGray, fontSize: 9), textAlign: TextAlign.center),
           ],
         ),
@@ -748,7 +757,7 @@ class WaveformPainter extends CustomPainter {
       if (i > 15 && i < 25) {
         paint.color = AppColors.statusRed;
       } else {
-        paint.color = Colors.white.withOpacity(0.6);
+        paint.color = Colors.white.withValues(alpha: 0.6);
       }
 
       canvas.drawRRect(

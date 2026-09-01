@@ -122,20 +122,12 @@ def extract_embedding(yamnet_model, file_path):
 
 
 def compute_mhs(fault_class, confidence):
-    """
-    Calculate MHS based on fault class and model confidence.
-    For healthy class, higher confidence leads to a higher score.
-    For fault classes, the score starts at a base and is penalized by confidence.
-    """
+
     if fault_class == "healthy":
-        # Higher confidence = higher score
-        # confidence 1.0 → MHS 100
-        # confidence 0.5 → MHS 50
+
         mhs = int(round(confidence * 100))
     else:
-        # Fault detected — apply penalty
-        # BASE_SCORE is the ceiling for that fault
-        # Higher confidence in fault = lower score
+
         if fault_class not in BASE_SCORES:
             return 0
         base = BASE_SCORES[fault_class]
@@ -181,8 +173,8 @@ def predict(file_path, yamnet_model, svm_model, scaler, label_map):
     embedding_scaled = scaler.transform([embedding])
     
     # Get SVM prediction
-    pred_idx = svm_model.predict(embedding_scaled)[0]
     probs = svm_model.predict_proba(embedding_scaled)[0]
+    pred_idx = int(np.argmax(probs))
     confidence = float(np.max(probs))
     
     # Reverse lookup for class name
@@ -191,10 +183,11 @@ def predict(file_path, yamnet_model, svm_model, scaler, label_map):
         if idx == pred_idx:
             fault_class = name
             break
-            
+
     mhs_score = compute_mhs(fault_class, confidence)
     color_indicator = get_color_indicator(mhs_score)
     explanation = FAULT_EXPLANATIONS.get(fault_class, "Unknown fault.")
+
     
     return {
         "status": "success",
@@ -210,7 +203,43 @@ def predict(file_path, yamnet_model, svm_model, scaler, label_map):
     }
 
 
+def predict_multi(file_paths, yamnet_model, svm_model, scaler, label_map):
+    """
+    Aggregates predictions from multiple audio stages (e.g., start, idle, acceleration).
+    Returns the result from the stage with the lowest MHS score (worst-case scenario).
+    """
+    results = []
+    for path in file_paths:
+        if os.path.exists(path):
+            res = predict(path, yamnet_model, svm_model, scaler, label_map)
+            results.append(res)
+            
+    success_results = [r for r in results if r['status'] == 'success']
+    
+    if not success_results:
+        # If all failed, return the first error or a generic one
+        if results:
+            return results[0]
+        return {
+            "status": "unclassified",
+            "mhs_score": 0,
+            "reason": "No valid audio files provided for multi-stage analysis."
+        }
+        
+    # ENGINE HEALTH LOGIC: We take the result with the lowest MHS score 
+    # because if any stage shows a fault, the overall engine status is impacted.
+    final_result = min(success_results, key=lambda x: x['mhs_score'])
+    
+    # Mark as multi-stage result
+    final_result['is_multi_stage'] = True
+    final_result['total_stages'] = len(file_paths)
+    final_result['stages_passed'] = len(success_results)
+    
+    return final_result
+
+
 if __name__ == "__main__":
+
     try:
         yamnet, svm, scaler, label_map = load_models()
     except Exception as e:
