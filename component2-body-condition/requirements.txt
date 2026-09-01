@@ -12,3 +12,4 @@ pillow-heif
 flasgger
 fastapi
 uvicorn
+h5py
