@@ -306,30 +306,41 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
   }
 
   Future<void> _handleNext() async {
-    // TODO: re-enable required-stages validation once testing is done.
+    // All three stages must have a valid recording before we can analyze.
+    // Missing = never recorded/uploaded; failed = a clip that was rejected by
+    // validation and still needs re-recording.
+    final missing = <String>[];
+    final failed = <String>[];
+    for (final phase in _phases) {
+      final key = phase['key'] as String;
+      final title = phase['title'] as String;
+      final path = _recordingPaths[key];
+      if (path == null || path.isEmpty) {
+        missing.add(title);
+      } else if (_phaseStatus[key] == 'error') {
+        failed.add(title);
+      }
+    }
 
-    // Prepare paths for API - only include valid non-empty paths
-    Map<String, String> phasePaths = {};
+    if (missing.isNotEmpty || failed.isNotEmpty) {
+      final parts = <String>[];
+      if (missing.isNotEmpty) parts.add('record ${missing.join(', ')}');
+      if (failed.isNotEmpty) parts.add('re-record ${failed.join(', ')}');
+      ToastService.show(
+        context,
+        'Please ${parts.join(' and ')} before continuing.',
+        isError: true,
+      );
+      return;
+    }
+
+    // All stages present — build the paths map for the API.
+    final Map<String, String> phasePaths = {};
     _recordingPaths.forEach((key, path) {
       if (path.isNotEmpty) {
         phasePaths[key] = path;
       }
     });
-
-    if (phasePaths.isEmpty) {
-      Navigator.pushNamed(
-        context,
-        '/inspection/images',
-        arguments: {
-          ..._vehicleData,
-          'fault_class': null,
-          'confidence': null,
-          'mhs_score': null,
-          'audio_file': null,
-        },
-      );
-      return;
-    }
 
     setState(() => _isAnalyzing = true);
 
