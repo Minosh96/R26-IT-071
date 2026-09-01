@@ -54,6 +54,16 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
     'acceleration': 'pending',
   };
 
+  // Per-phase validation error / warning messages from the backend.
+  final Map<String, String> _phaseMessages = {};
+
+  // Backend field name -> UI phase key.
+  static const Map<String, String> _fieldToPhase = {
+    'audio_start': 'engine_start',
+    'audio_idle': 'idle',
+    'audio_acceleration': 'acceleration',
+  };
+
   late AnimationController _waveController;
 
   final List<Map<String, dynamic>> _phases = [
@@ -117,6 +127,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
           _recordingPath = _audioFilePath!;
           _recordingDuration = Duration.zero;
           _phaseStatus[_activePhaseKey] = 'recording';
+          _phaseMessages.remove(_activePhaseKey);
         });
 
         _startTimer();
@@ -277,6 +288,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
       _phaseStatus[_activePhaseKey] = 'pending';
       _recordingPaths.remove(_activePhaseKey);
       _recordingDurations.remove(_activePhaseKey);
+      _phaseMessages.remove(_activePhaseKey);
     });
   }
 
@@ -316,8 +328,30 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
       _isAnalyzing = false;
     });
 
-    if (result['status'] == 'success') {
+    final status = result['status'];
+    if (status == 'success') {
+      // Soft warnings (e.g. wrong stage) don't block — surface, then continue.
+      final warnings = _collectStageMessages(result, wantWarnings: true);
+      setState(() {
+        _phaseMessages
+          ..clear()
+          ..addAll(warnings);
+      });
       _showEngineResult(result);
+    } else if (status == 'validation_error') {
+      // Hard failures: mark the offending phases and show why. Don't advance.
+      final errors = _collectStageMessages(result, wantWarnings: false);
+      setState(() {
+        _phaseMessages
+          ..clear()
+          ..addAll(errors);
+        errors.forEach((phase, _) => _phaseStatus[phase] = 'error');
+      });
+      ToastService.show(
+        context,
+        result['message'] ?? 'Some recordings need to be re-recorded.',
+        isError: true,
+      );
     } else {
       ToastService.show(
         context,
@@ -325,6 +359,26 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
         isError: true,
       );
     }
+  }
+
+  /// Extracts per-phase messages from the response `stages` block.
+  /// wantWarnings=true collects soft warnings on valid stages; false collects
+  /// blocking messages on invalid stages.
+  Map<String, String> _collectStageMessages(Map<String, dynamic> result, {required bool wantWarnings}) {
+    final out = <String, String>{};
+    final stages = result['stages'];
+    if (stages is Map) {
+      stages.forEach((field, data) {
+        final phase = _fieldToPhase[field];
+        if (phase == null || data is! Map) return;
+        if (wantWarnings) {
+          if (data['warning'] != null) out[phase] = data['warning'].toString();
+        } else if (data['valid'] == false && data['message'] != null) {
+          out[phase] = data['message'].toString();
+        }
+      });
+    }
+    return out;
   }
 
   void _showEngineResult(Map<String, dynamic> result) {
@@ -651,11 +705,37 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                                         ],
                                       ),
                                     ),
+                                    if (_phaseMessages[phase['key']] != null)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 4),
+                                        child: Row(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Icon(
+                                              status == 'error' ? Icons.error_outline : Icons.warning_amber_rounded,
+                                              size: 13,
+                                              color: status == 'error' ? AppColors.statusRed : AppColors.statusAmber,
+                                            ),
+                                            const SizedBox(width: 4),
+                                            Expanded(
+                                              child: Text(
+                                                _phaseMessages[phase['key']]!,
+                                                style: TextStyle(
+                                                  color: status == 'error' ? AppColors.statusRed : AppColors.statusAmber,
+                                                  fontSize: 11,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
                                   ],
                                 ),
                               ),
                               if (status == 'done')
                                 const Text("Done", style: TextStyle(color: AppColors.statusGreen, fontSize: 13, fontWeight: FontWeight.bold))
+                              else if (status == 'error')
+                                const Text("Re-record", style: TextStyle(color: AppColors.statusRed, fontSize: 13, fontWeight: FontWeight.bold))
                               else if (status == 'recording')
                                 Text(
                                   "${_getRemainingSeconds(phase['key'])} sec",
