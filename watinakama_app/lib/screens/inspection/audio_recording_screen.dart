@@ -166,8 +166,10 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
       return;
     }
 
-    // Save current before switching if it exists
-    if (_recordingPath.isNotEmpty) {
+    // Preserve the current phase's recording before moving away, but never
+    // promote a phase that failed validation ('error') to 'done' — that clip
+    // was rejected and still needs re-recording.
+    if (_recordingPath.isNotEmpty && _phaseStatus[_activePhaseKey] != 'error') {
       _recordingPaths[_activePhaseKey] = _recordingPath;
       _recordingDurations[_activePhaseKey] = _recordingDuration;
       _phaseStatus[_activePhaseKey] = 'done';
@@ -175,6 +177,17 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
 
     setState(() {
       _activePhaseKey = phaseKey;
+
+      // Tapping a phase that failed validation is the "Re-record" action:
+      // drop the rejected clip and its message so the user records a fresh
+      // one (otherwise it would falsely read "Done" and get re-submitted).
+      if (_phaseStatus[phaseKey] == 'error') {
+        _recordingPaths.remove(phaseKey);
+        _recordingDurations.remove(phaseKey);
+        _phaseMessages.remove(phaseKey);
+        _phaseStatus[phaseKey] = 'pending';
+      }
+
       _recordingPath = _recordingPaths[phaseKey] ?? '';
       _recordingDuration = _recordingDurations[phaseKey] ?? Duration.zero;
       _isPlaying = false;
