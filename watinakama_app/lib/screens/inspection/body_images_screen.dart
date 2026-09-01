@@ -142,20 +142,25 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
     
     if (!mounted) return;
 
+    // A validator error (network failure, 503 model-not-loaded, etc.) is an
+    // infrastructure problem — NOT evidence the photo is the wrong view. Fail
+    // OPEN so a correctly-uploaded image isn't rejected and Next isn't blocked.
+    // Genuine wrong-view verdicts (a 200 response) are still handled below.
     if (result['status'] == 'error') {
-      setState(() => _viewValidating[index] = false);
+      setState(() {
+        _viewValidating[index] = false;
+        _viewValid[index]      = true;   // allow through
+        _viewMessage[index]    = null;
+      });
       ToastService.show(
         context,
-        'API Error: ${result['message']}\n(Allowed through for now)',
-        isError: true,
+        'View check unavailable — your photo was allowed through.',
       );
-      // Fall through to let it be valid (fail-open)
+      return;
     }
 
     setState(() {
-      if (result['status'] != 'error') {
-        _viewValidating[index] = false;
-      }
+      _viewValidating[index] = false;
       final isCorrect   = result['correct']   as bool? ?? true;
       final isUncertain = result['uncertain'] as bool? ?? false;
       _viewValid[index]   = isCorrect || isUncertain;

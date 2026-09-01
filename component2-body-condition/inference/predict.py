@@ -171,8 +171,16 @@ def load_models():
           f"Test prediction: {part_model(np.zeros((1,224,224,3), dtype=np.float32), training=False).numpy()}")
 
     # ── View Validator (MobileNetV3Small, 5-class) ─────────────────────
+    # Isolated: a view-model failure must NOT take down damage/part analysis.
+    # If it can't load (e.g. incompatible weights artifact), view_model stays
+    # None and per-image view validation is skipped downstream.
     print("[INFO] Loading vehicle view validator model...")
-    view_model = load_view_model()
+    try:
+        view_model = load_view_model()
+    except Exception as e:
+        view_model = None
+        print(f"[WARN] View validator failed to load; view validation disabled. "
+              f"Damage/part analysis will continue. Reason: {e}")
 
     return {"damage_model": damage_model, "part_model": part_model, "view_model": view_model}
 
