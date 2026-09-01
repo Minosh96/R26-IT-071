@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import '../../constants/app_colors.dart';
 import '../../widgets/inspection_app_bar.dart';
 import '../../widgets/progress_stepper.dart';
@@ -11,6 +12,7 @@ import '../../widgets/loading_overlay.dart';
 import '../../widgets/custom_toast.dart';
 import '../../widgets/result_sheet.dart';
 import '../../widgets/nav_button_row.dart';
+import '../../utils/file_validation.dart';
 
 // ─── Vehicle view names in API / model order ─────────────────────────────────
 const List<String> _kAngleNames  = ['Front', 'Rear', 'Left', 'Right', 'Up'];
@@ -35,12 +37,10 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
   final List<String?> _capturedPaths = [null, null, null, null, null];
 
   /// Per-image view-validation state.
-  /// null  = not validated yet
-  /// true  = validated OK
-  /// false = wrong view detected
-  final List<bool?>         _viewValid      = [null, null, null, null, null];
-  final List<String?>       _viewMessage    = [null, null, null, null, null];
-  final List<bool>          _viewValidating = [false, false, false, false, false];
+  /// null  = not validated yet | true = valid | false = wrong view
+  final List<bool?>   _viewValid      = [null, null, null, null, null];
+  final List<String?> _viewMessage    = [null, null, null, null, null];
+  final List<bool>    _viewValidating = [false, false, false, false, false];
 
   final AuthService _authService = AuthService();
   final ApiService  _apiService  = ApiService();
@@ -57,15 +57,12 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
     final name = await _authService.getUserName();
     final pic  = await _authService.getProfilePicPath();
     setState(() {
-      _userName    = name;
+      _userName       = name;
       _profilePicPath = pic;
     });
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final args = ModalRoute.of(context)?.settings.arguments;
-      if (args is Map<String, dynamic>) {
-        setState(() => _vehicleData = args);
-      }
+      if (args is Map<String, dynamic>) setState(() => _vehicleData = args);
     });
   }
 
@@ -73,32 +70,44 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
 
   List<bool> get _capturedAngles => _capturedPaths.map((p) => p != null).toList();
   bool get _allCaptured => _capturedPaths.every((p) => p != null);
-
   String get _currentAngleName => _kAngleNames[_currentAngle];
-
-  /// Returns true if current image has a validation error (wrong view).
   bool get _currentHasError =>
-      _viewValid[_currentAngle] == false &&
-      _viewMessage[_currentAngle] != null;
+      _viewValid[_currentAngle] == false && _viewMessage[_currentAngle] != null;
 
-  // ── Image capture & validation ──────────────────────────────────────────────
+  // ── Image capture, crop & validation ────────────────────────────────────────
 
   Future<void> _pickImage(ImageSource source) async {
     final picker = ImagePicker();
     final photo  = await picker.pickImage(source: source, imageQuality: 85);
     if (photo == null) return;
 
+    // File-type guard (from main branch)
+    final validationError = validateFileExtension(
+      photo.path,
+      allowedImageExtensions,
+      'JPG, PNG, WEBP, or HEIC image',
+    );
+    if (validationError != null) {
+      if (!mounted) return;
+      ToastService.show(context, validationError, isError: true);
+      return;
+    }
+
+    // Crop first
+    final croppedPath = await _cropImage(photo.path);
+    if (croppedPath == null || !mounted) return;
+
     setState(() {
-      _capturedPaths[_currentAngle]  = photo.path;
-      _viewValid[_currentAngle]      = null;   // reset validation
+      _capturedPaths[_currentAngle]  = croppedPath;
+      _viewValid[_currentAngle]      = null;
       _viewMessage[_currentAngle]    = null;
       _viewValidating[_currentAngle] = true;
     });
 
-    // Validate immediately in background
-    await _validateCurrentView(_currentAngle, photo.path);
+    // Validate view in background
+    await _validateCurrentView(_currentAngle, croppedPath);
 
-    // Auto-advance to next un-captured angle (only if view is OK)
+    // Auto-advance to next empty slot if view passed
     if (mounted && _viewValid[_currentAngle] != false && !_allCaptured) {
       for (int i = 0; i < 5; i++) {
         if (_capturedPaths[i] == null) {
@@ -109,20 +118,35 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
     }
   }
 
-  Future<void> _validateCurrentView(int index, String imagePath) async {
-    final expectedView = _kApiViewKeys[index];
-    final result = await _apiService.validateView(imagePath, expectedView);
+  Future<String?> _cropImage(String sourcePath) async {
+    final cropped = await ImageCropper().cropImage(
+      sourcePath: sourcePath,
+      uiSettings: [
+        AndroidUiSettings(
+          toolbarTitle: 'Crop $_currentAngleName View',
+          toolbarColor: const Color(0xFF0B0F17),
+          toolbarWidgetColor: Colors.white,
+          backgroundColor: const Color(0xFF0B0F17),
+          activeControlsWidgetColor: AppColors.primaryBlue,
+          lockAspectRatio: false,
+        ),
+        IOSUiSettings(title: 'Crop $_currentAngleName View'),
+      ],
+    );
+    return cropped?.path;
+  }
 
+  Future<void> _validateCurrentView(int index, String imagePath) async {
+    final result =
+        await _apiService.validateView(imagePath, _kApiViewKeys[index]);
     if (!mounted) return;
     setState(() {
       _viewValidating[index] = false;
-      final isCorrect = result['correct'] as bool? ?? true;
+      final isCorrect   = result['correct']   as bool? ?? true;
       final isUncertain = result['uncertain'] as bool? ?? false;
-      _viewValid[index]   = isCorrect || isUncertain;   // uncertain = soft-pass
+      _viewValid[index]   = isCorrect || isUncertain;
       _viewMessage[index] = result['message'] as String?;
     });
-
-    // Show a toast for wrong views
     if (mounted && _viewValid[index] == false) {
       final predicted = result['predicted'] as String? ?? 'unknown';
       ToastService.show(
@@ -137,14 +161,12 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
   // ── Submit / Analyze ────────────────────────────────────────────────────────
 
   Future<void> _handleNext() async {
-    // Check for any images with confirmed wrong-view errors
     final badViews = <String>[];
     for (int i = 0; i < 5; i++) {
       if (_capturedPaths[i] != null && _viewValid[i] == false) {
         badViews.add(_kAngleNames[i]);
       }
     }
-
     if (badViews.isNotEmpty) {
       ToastService.show(
         context,
@@ -154,10 +176,8 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
       return;
     }
 
-    final images = _capturedPaths
-        .where((p) => p != null)
-        .map((p) => File(p!))
-        .toList();
+    final images =
+        _capturedPaths.where((p) => p != null).map((p) => File(p!)).toList();
 
     if (images.isEmpty) {
       Navigator.pushNamed(context, '/inspection/vin', arguments: {
@@ -170,9 +190,7 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
     }
 
     setState(() => _isAnalyzing = true);
-
     final result = await _apiService.analyzeBody(images);
-
     if (!mounted) return;
     setState(() => _isAnalyzing = false);
 
@@ -185,8 +203,8 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
       return;
     }
 
-    // Check if the backend reported any view errors
-    final viewErrors = (result['view_errors'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final viewErrors =
+        (result['view_errors'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     if (viewErrors.isNotEmpty) {
       _showViewErrorSheet(viewErrors, result);
     } else {
@@ -194,9 +212,8 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
     }
   }
 
-  // ── Result / Error sheets ───────────────────────────────────────────────────
+  // ── Result sheets ───────────────────────────────────────────────────────────
 
-  /// Shown when backend detected at least one wrong view in the uploaded images.
   void _showViewErrorSheet(
     List<Map<String, dynamic>> viewErrors,
     Map<String, dynamic> fullResult,
@@ -214,33 +231,31 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
               Text(
                 'Wrong View Detected',
                 style: TextStyle(
-                  color: AppColors.textWhite,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+                    color: AppColors.textWhite,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold),
               ),
             ],
           ),
           const SizedBox(height: 12),
           const Text(
-            'The AI model detected that some images do not match '
-            'the expected vehicle view. Please re-upload the correct images:',
+            'The AI detected that some images do not match the expected vehicle '
+            'view. Please re-upload the correct images:',
             style: TextStyle(color: AppColors.textGray, fontSize: 13),
           ),
           const SizedBox(height: 16),
-          ...viewErrors.map((e) => _buildViewErrorTile(e)),
+          ...viewErrors.map(_buildViewErrorTile),
           const SizedBox(height: 16),
           if ((fullResult['damaged_parts'] as List?)?.isNotEmpty == true) ...[
-            const Text(
-              'Partial results (valid views only):',
-              style: TextStyle(color: AppColors.textGray, fontSize: 12),
-            ),
+            const Text('Partial results (valid views only):',
+                style: TextStyle(color: AppColors.textGray, fontSize: 12)),
             const SizedBox(height: 8),
             _buildScoreChip(
               (fullResult['final_body_condition_score'] ??
-                  fullResult['body_score'] ??
-                  fullResult['score'] ??
-                  0).toDouble(),
+                      fullResult['body_score'] ??
+                      fullResult['score'] ??
+                      0)
+                  .toDouble(),
             ),
           ],
         ],
@@ -271,10 +286,9 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
                 Text(
                   '${e['view']?.toString().toUpperCase() ?? 'Unknown'} View',
                   style: const TextStyle(
-                    color: AppColors.textWhite,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 13,
-                  ),
+                      color: AppColors.textWhite,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -282,10 +296,8 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
                   style: const TextStyle(color: AppColors.textGray, fontSize: 12),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  e['message'] ?? '',
-                  style: const TextStyle(color: AppColors.textGray, fontSize: 11),
-                ),
+                Text(e['message'] ?? '',
+                    style: const TextStyle(color: AppColors.textGray, fontSize: 11)),
               ],
             ),
           ),
@@ -294,18 +306,14 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
     );
   }
 
-  /// Full result sheet – body condition score + damaged body parts.
   void _showBodyResult(Map<String, dynamic> result) {
     final double score = (result['final_body_condition_score'] ??
             result['body_score'] ??
             result['score'] ??
             0)
         .toDouble();
-
-    // Collect damaged_parts list from backend
     final rawDamages =
         (result['damaged_parts'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-
     final color = AppColors.statusColorFor(score);
 
     showResultSheet(
@@ -314,38 +322,32 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Score circle + label ──────────────────────────────────────────
           Center(
             child: Column(
               children: [
                 Text(
                   '${score.toInt()}',
                   style: TextStyle(
-                    fontSize: 56,
-                    fontWeight: FontWeight.bold,
-                    color: color,
-                    height: 1,
-                  ),
+                      fontSize: 56,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                      height: 1),
                 ),
-                const Text(
-                  'Body Condition Score',
-                  style: TextStyle(color: AppColors.textGray, fontSize: 13),
-                ),
+                const Text('Body Condition Score',
+                    style:
+                        TextStyle(color: AppColors.textGray, fontSize: 13)),
                 const SizedBox(height: 8),
                 Text(
                   result['condition'] ?? result['vehicle_status'] ?? '',
                   style: TextStyle(
-                    color: color,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
+                      color: color,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600),
                 ),
               ],
             ),
           ),
           const SizedBox(height: 16),
-
-          // ── Score bar ─────────────────────────────────────────────────────
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: LinearProgressIndicator(
@@ -356,27 +358,20 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
             ),
           ),
           const SizedBox(height: 24),
-
-          // ── Damaged body parts ────────────────────────────────────────────
           if (rawDamages.isNotEmpty) ...[
-            const Text(
-              'Damaged Body Parts',
-              style: TextStyle(
-                color: AppColors.textWhite,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-              ),
-            ),
+            const Text('Damaged Body Parts',
+                style: TextStyle(
+                    color: AppColors.textWhite,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14)),
             const SizedBox(height: 10),
-            ...rawDamages.map((d) => _buildDamageTile(d)),
-          ] else ...[
+            ...rawDamages.map(_buildDamageTile),
+          ] else
             const Center(
-              child: Text(
-                '✅  No significant body damage detected.',
-                style: TextStyle(color: AppColors.statusGreen, fontSize: 13),
-              ),
+              child: Text('No significant body damage detected.',
+                  style:
+                      TextStyle(color: AppColors.statusGreen, fontSize: 13)),
             ),
-          ],
         ],
       ),
       ctaLabel: 'Continue to VIN Scan',
@@ -440,17 +435,16 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  part,
-                  style: const TextStyle(
-                    color: AppColors.textWhite,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 13,
-                  ),
-                ),
+                Text(part,
+                    style: const TextStyle(
+                        color: AppColors.textWhite,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13)),
                 const SizedBox(height: 2),
                 Text(
-                  '$damageType${category.isNotEmpty ? '  ·  $category' : ''}${view.isNotEmpty ? '  ·  ${view[0].toUpperCase()}${view.substring(1)} view' : ''}',
+                  '$damageType'
+                  '${category.isNotEmpty ? '  ·  $category' : ''}'
+                  '${view.isNotEmpty ? '  ·  ${view[0].toUpperCase()}${view.substring(1)} view' : ''}',
                   style: TextStyle(color: dtColor, fontSize: 11),
                 ),
               ],
@@ -470,10 +464,8 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color.withValues(alpha: 0.5)),
       ),
-      child: Text(
-        'Partial Score: ${score.toInt()}/100',
-        style: TextStyle(color: color, fontWeight: FontWeight.bold),
-      ),
+      child: Text('Partial Score: ${score.toInt()}/100',
+          style: TextStyle(color: color, fontWeight: FontWeight.bold)),
     );
   }
 
@@ -481,7 +473,7 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final hasError  = _currentHasError;
+    final hasError     = _currentHasError;
     final isValidating = _viewValidating[_currentAngle];
 
     return Scaffold(
@@ -496,7 +488,7 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
         message: 'Analyzing body condition...',
         child: Column(
           children: [
-            // ── Step progress ──────────────────────────────────────────────
+            // Step progress
             Container(
               height: 75,
               width: double.infinity,
@@ -504,19 +496,18 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
               alignment: Alignment.center,
               child: const ProgressStepper(currentStep: 2),
             ),
-
             const SizedBox(height: 12),
 
-            // ── Sub-stepper (angle selector) ───────────────────────────────
+            // Sub-stepper
             ImageSubStepper(
               currentAngle: _currentAngle,
               capturedAngles: _capturedAngles,
-              onAngleSelected: (index) => setState(() => _currentAngle = index),
+              onAngleSelected: (index) =>
+                  setState(() => _currentAngle = index),
             ),
-
             const SizedBox(height: 16),
 
-            // ── Header + validation status ─────────────────────────────────
+            // Header + validation banner
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
@@ -526,41 +517,35 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
                         ? 'Capture the $_currentAngleName view'
                         : '$_currentAngleName view captured',
                     style: const TextStyle(
-                      color: AppColors.textWhite,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                        color: AppColors.textWhite,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 6),
-
-                  // Validation status banner
                   if (isValidating)
                     _buildStatusBanner(
-                      icon: Icons.hourglass_top_rounded,
-                      color: AppColors.textGray,
-                      text: 'Verifying view...',
-                    )
+                        icon: Icons.hourglass_top_rounded,
+                        color: AppColors.textGray,
+                        text: 'Verifying view...')
                   else if (hasError)
                     _buildStatusBanner(
-                      icon: Icons.error_outline_rounded,
-                      color: AppColors.statusRed,
-                      text: _viewMessage[_currentAngle] ?? 'Wrong view detected.',
-                      isError: true,
-                    )
+                        icon: Icons.error_outline_rounded,
+                        color: AppColors.statusRed,
+                        text: _viewMessage[_currentAngle] ??
+                            'Wrong view detected.',
+                        isError: true)
                   else if (_viewValid[_currentAngle] == true &&
                       _capturedPaths[_currentAngle] != null)
                     _buildStatusBanner(
-                      icon: Icons.check_circle_outline_rounded,
-                      color: AppColors.statusGreen,
-                      text: 'View verified ✓',
-                    ),
+                        icon: Icons.check_circle_outline_rounded,
+                        color: AppColors.statusGreen,
+                        text: 'View verified ✓'),
                 ],
               ),
             ),
-
             const SizedBox(height: 12),
 
-            // ── Preview area ───────────────────────────────────────────────
+            // Preview area
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -575,7 +560,9 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
                           : (_viewValid[_currentAngle] == true
                               ? AppColors.statusGreen.withValues(alpha: 0.5)
                               : AppColors.textFieldBorder),
-                      width: hasError || _viewValid[_currentAngle] == true ? 2 : 1,
+                      width: hasError || _viewValid[_currentAngle] == true
+                          ? 2
+                          : 1,
                     ),
                   ),
                   child: _capturedPaths[_currentAngle] != null
@@ -589,7 +576,35 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
                                 fit: BoxFit.cover,
                               ),
                             ),
-                            // Retake hint
+                            // Re-crop button (preserved from main)
+                            Positioned(
+                              top: 12,
+                              left: 12,
+                              child: GestureDetector(
+                                onTap: () async {
+                                  final croppedPath = await _cropImage(
+                                      _capturedPaths[_currentAngle]!);
+                                  if (croppedPath == null || !mounted) return;
+                                  setState(() {
+                                    _capturedPaths[_currentAngle] = croppedPath;
+                                    _viewValid[_currentAngle]      = null;
+                                    _viewValidating[_currentAngle] = true;
+                                  });
+                                  await _validateCurrentView(
+                                      _currentAngle, croppedPath);
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(Icons.crop,
+                                      color: Colors.white, size: 18),
+                                ),
+                              ),
+                            ),
+                            // Retake label
                             Positioned(
                               top: 12,
                               right: 12,
@@ -600,11 +615,9 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
                                   color: Colors.black54,
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: const Text(
-                                  'Tap Capture to Retake',
-                                  style: TextStyle(
-                                      color: Colors.white70, fontSize: 10),
-                                ),
+                                child: const Text('Tap Capture to Retake',
+                                    style: TextStyle(
+                                        color: Colors.white70, fontSize: 10)),
                               ),
                             ),
                             // View-validation overlay badge
@@ -631,10 +644,8 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
                               Positioned(
                                 bottom: 12,
                                 left: 12,
-                                child: _buildBadge(
-                                    Icons.check_circle_rounded,
-                                    'View verified',
-                                    AppColors.statusGreen),
+                                child: _buildBadge(Icons.check_circle_rounded,
+                                    'View verified', AppColors.statusGreen),
                               ),
                           ],
                         )
@@ -662,10 +673,9 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
                 ),
               ),
             ),
-
             const SizedBox(height: 16),
 
-            // ── Camera / Gallery buttons ───────────────────────────────────
+            // Capture / Gallery buttons
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Row(
@@ -687,10 +697,9 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
                 ],
               ),
             ),
-
             const SizedBox(height: 24),
 
-            // ── Nav buttons ────────────────────────────────────────────────
+            // Navigation
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
               child: NavButtonRow(
@@ -719,7 +728,8 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
       decoration: BoxDecoration(
         color: color.withValues(alpha: isError ? 0.12 : 0.08),
         borderRadius: BorderRadius.circular(8),
-        border: isError ? Border.all(color: color.withValues(alpha: 0.4)) : null,
+        border:
+            isError ? Border.all(color: color.withValues(alpha: 0.4)) : null,
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -727,11 +737,8 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
           Icon(icon, color: color, size: 16),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(
-              text,
-              style: TextStyle(color: color, fontSize: 11),
-            ),
-          ),
+              child:
+                  Text(text, style: TextStyle(color: color, fontSize: 11))),
         ],
       ),
     );
@@ -771,26 +778,23 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
             height: isCamera ? 64 : 52,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: isCamera ? AppColors.primaryBlue : AppColors.darkNavySurface,
+              color: isCamera
+                  ? AppColors.primaryBlue
+                  : AppColors.darkNavySurface,
               border: isCamera
                   ? Border.all(
-                      color: Colors.white.withValues(alpha: 0.3),
-                      width: 3,
-                    )
+                      color: Colors.white.withValues(alpha: 0.3), width: 3)
                   : null,
             ),
-            child: Icon(
-              icon,
-              color: isCamera ? Colors.white : AppColors.textWhite,
-              size:  isCamera ? 30 : 24,
-            ),
+            child: Icon(icon,
+                color: isCamera ? Colors.white : AppColors.textWhite,
+                size: isCamera ? 30 : 24),
           ),
         ),
         const SizedBox(height: 6),
-        Text(
-          label,
-          style: const TextStyle(color: AppColors.textGray, fontSize: 11),
-        ),
+        Text(label,
+            style:
+                const TextStyle(color: AppColors.textGray, fontSize: 11)),
       ],
     );
   }

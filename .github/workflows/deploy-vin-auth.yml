@@ -1,0 +1,37 @@
+name: Deploy VIN Authentication
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'component1-vin-authentication/**'
+      - '.github/workflows/deploy-vin-auth.yml'
+  workflow_dispatch:
+
+env:
+  IMAGE_NAME: watinakama-vin-auth
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./component1-vin-authentication
+          push: true
+          tags: |
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      # Azure App Service pulls the new :latest image automatically via the
+      # Docker Hub webhook configured on this repo's Webhooks tab - no Azure
+      # credentials needed here.

@@ -1,20 +1,17 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import '../utils/error_messages.dart';
 
 class ApiConfig {
-  // Change this to your PC's IP address when using real device
-  // Use 10.0.2.2 for Android emulator
-  static const String baseIp = '10.19.92.101';
+  // The gateway is the single public entry point; it proxies to the 4
+  // backend services and injects their auth tokens server-side.
+  static const String gatewayBaseUrl = 'https://watinakama-gateway.azurewebsites.net';
 
-  static const String vinApi = 'http://$baseIp:8000';
-  static const String bodyApi = 'http://$baseIp:8080';
-  static const String engineApi = 'http://$baseIp:5003';
-  static const String valuationApi = 'http://$baseIp:5004';
-
-  static const String engineToken =
-      'Bearer 097ad29076b1a4d2121e9ee67f478357e3d883ebd57d3ab609ae725495f79bcf';
-  static const String valuationToken = 'Bearer watinakama-valuation-api-2026';
+  static const String vinApi = '$gatewayBaseUrl/vin';
+  static const String bodyApi = '$gatewayBaseUrl/body';
+  static const String engineApi = '$gatewayBaseUrl/engine';
+  static const String valuationApi = '$gatewayBaseUrl/valuation';
 }
 
 class ApiService {
@@ -24,9 +21,7 @@ class ApiService {
     try {
       var request = http.MultipartRequest(
           'POST', Uri.parse('${ApiConfig.engineApi}/api/v1/analyze'));
-      
-      request.headers['Authorization'] = ApiConfig.engineToken;
-      
+
       // Map the keys from the recording screen to the backend expected field names
       if (phasePaths.containsKey('engine_start')) {
         request.files.add(await http.MultipartFile.fromPath('audio_start', phasePaths['engine_start']!));
@@ -65,7 +60,7 @@ class ApiService {
 
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
-      return {"status": "error", "message": e.toString()};
+      return {"status": "error", "message": friendlyErrorMessage(e, fallback: "Couldn't reach the server. Please try again.")};
     }
   }
 
@@ -98,7 +93,7 @@ class ApiService {
 
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
-      return {"status": "error", "message": e.toString()};
+      return {"status": "error", "message": friendlyErrorMessage(e, fallback: "Couldn't reach the server. Please try again.")};
     }
   }
 
@@ -165,7 +160,7 @@ class ApiService {
 
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
-      return {"status": "error", "message": e.toString()};
+      return {"status": "error", "message": friendlyErrorMessage(e, fallback: "Couldn't reach the server. Please try again.")};
     }
   }
 
@@ -175,7 +170,6 @@ class ApiService {
       var response = await http.post(
         Uri.parse('${ApiConfig.valuationApi}/api/v1/valuate'),
         headers: {
-          'Authorization': ApiConfig.valuationToken,
           'Content-Type': 'application/json',
         },
         body: jsonEncode(data),
@@ -192,7 +186,7 @@ class ApiService {
 
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
-      return {"status": "error", "message": e.toString()};
+      return {"status": "error", "message": friendlyErrorMessage(e, fallback: "Couldn't reach the server. Please try again.")};
     }
   }
 

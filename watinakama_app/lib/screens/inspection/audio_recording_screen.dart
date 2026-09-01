@@ -16,6 +16,7 @@ import '../../widgets/app_card.dart';
 import '../../widgets/nav_button_row.dart';
 import '../../widgets/result_sheet.dart';
 import '../../widgets/score_badge.dart';
+import '../../utils/file_validation.dart';
 
 class AudioRecordingScreen extends StatefulWidget {
   const AudioRecordingScreen({super.key});
@@ -235,6 +236,18 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
 
       if (result != null && result.files.single.path != null) {
         String path = result.files.single.path!;
+
+        final validationError = validateFileExtension(
+          path,
+          allowedAudioExtensions,
+          'WAV, MP3, M4A, or MP4 audio',
+        );
+        if (validationError != null) {
+          if (!mounted) return;
+          ToastService.show(context, validationError, isError: true);
+          return;
+        }
+
         setState(() {
           _audioFilePath = path;
           _recordingPath = path;
@@ -308,7 +321,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
     } else {
       ToastService.show(
         context,
-        'Analysis failed: ${result["message"] ?? result["error"] ?? "Unknown error"}',
+        'Analysis failed: ${result["message"] ?? result["error"] ?? result["reason"] ?? "Unknown error"}',
         isError: true,
       );
     }

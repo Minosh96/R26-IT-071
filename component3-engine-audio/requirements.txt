@@ -11,3 +11,4 @@ soundfile
 python-dotenv
 setuptools<70
 flasgger
+gunicorn
