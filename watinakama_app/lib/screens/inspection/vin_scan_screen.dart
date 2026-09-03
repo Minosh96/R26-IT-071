@@ -172,7 +172,7 @@ class _VinScanScreenState extends State<VinScanScreen> {
       icon = Icons.warning;
       color = AppColors.statusRed;
       statusText = "VIN ALTERED";
-      warning = "Do not purchase this vehicle. The VIN has been tampered with.";
+      warning = "Be cautious when purchasing this vehicle. Potential VIN tampering has been detected.";
     } else {
       icon = Icons.help_outline;
       color = AppColors.statusAmber;
@@ -279,14 +279,7 @@ class _VinScanScreenState extends State<VinScanScreen> {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          TextSpan(text: " or "),
-                          TextSpan(
-                            text: "Engine Number",
-                            style: TextStyle(
-                              color: Color(0xFFFF8C00),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+
                           TextSpan(
                             text: " within the frame to scan automatically.",
                           ),

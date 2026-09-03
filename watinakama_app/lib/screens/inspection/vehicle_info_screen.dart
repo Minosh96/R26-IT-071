@@ -396,7 +396,7 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
 
   Widget _buildDropdown({required int value, required List<int> items, required Function(int?) onChanged}) {
     return DropdownButtonFormField<int>(
-      value: value,
+      initialValue: value,
       items: items.map((year) => DropdownMenuItem(
         value: year,
         child: Text(year.toString(), style: const TextStyle(color: AppColors.textWhite, fontSize: 14)),
