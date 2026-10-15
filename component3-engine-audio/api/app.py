@@ -170,6 +170,21 @@ def analyze_engine_sound():
         type: file
         required: false
         description: Engine acceleration sound file
+      - name: audio_full
+        in: formData
+        type: file
+        required: false
+        description: One guided recording covering engine start, idle and acceleration
+      - name: start_end
+        in: formData
+        type: number
+        required: false
+        description: Second at which the app moved from "start" to "idle" (audio_full only)
+      - name: idle_end
+        in: formData
+        type: number
+        required: false
+        description: Second at which the app moved from "idle" to "accelerate" (audio_full only)
       - name: audio_file
         in: formData
         type: file
@@ -213,6 +228,11 @@ def analyze_engine_sound():
             }
             return
         file_map[field] = temp_path
+
+    # One guided recording covering all three stages (the app's default).
+    full = request.files.get('audio_full')
+    if full is not None and full.filename != '':
+        return _analyze_full_recording(full, _accept, file_map, pre_invalid, temp_paths)
 
     for field in stage_fields:
         if field in request.files and request.files[field].filename != '':
@@ -266,6 +286,46 @@ def analyze_engine_sound():
                 except Exception as e:
                     print(f"Warning: Failed to delete temp file {path}: {e}")
 
+
+
+def _form_seconds(name):
+    """Optional numeric form field, e.g. start_end=8.2; None when missing or invalid."""
+    try:
+        value = float(request.form.get(name, ''))
+        return value if value >= 0 else None
+    except ValueError:
+        return None
+
+
+def _analyze_full_recording(file, accept, file_map, pre_invalid, temp_paths):
+    """Handle an upload in the 'audio_full' field: one recording, cut into stages."""
+    from inference.predict import analyze_recording
+
+    try:
+        accept('audio_full', file)
+        if pre_invalid:
+            stage = pre_invalid['audio_full']
+            result = {"status": "validation_error", "message": stage["message"],
+                      "stages": {"audio_full": stage}}
+        else:
+            result = analyze_recording(file_map['audio_full'], YAMNET_MODEL, SVM_MODEL, SCALER, LABEL_MAP,
+                                       start_end=_form_seconds('start_end'),
+                                       idle_end=_form_seconds('idle_end'))
+        session_id = request.form.get('session_id')
+        if session_id:
+            result['session_id'] = session_id
+        status_code = 422 if result.get("status") == "validation_error" else 200
+        return jsonify(result), status_code
+    except Exception as e:
+        print(f"Error during analysis: {str(e)}")
+        return jsonify({"error": f"Analysis failed: {str(e)}", "status_code": 500}), 500
+    finally:
+        for path in temp_paths:
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except Exception as e:
+                    print(f"Warning: Failed to delete temp file {path}: {e}")
 
 
 if __name__ == "__main__":
