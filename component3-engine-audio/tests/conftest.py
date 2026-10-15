@@ -49,6 +49,38 @@ def synthetic_audio(tmp_path_factory):
     return paths
 
 
+@pytest.fixture(scope="session")
+def full_recordings(tmp_path_factory):
+    """
+    30-second "single recordings" made by joining real clips: an engine start,
+    then idle, then revving (or knocking). Saved as 16-bit WAV like the phone app.
+    Returns {name: (path, start_end, idle_end)}.
+    """
+    import librosa
+    folder = tmp_path_factory.mktemp("full")
+    sr = 16000
+    load = lambda name, seconds=None: librosa.load(TEST_AUDIO / name, sr=sr, duration=seconds)[0]
+    start = load("healthy/CAG 5756_Start.wav")
+    idle = load("healthy/CAQ 1654_Idle.wav", 12)
+    revs = load("healthy/CAL 2467_High RPM.wav", 10)
+    knock = load("knocking/Engine knock 6.wav", 10)
+    start_end, idle_end = len(start) / sr, (len(start) + len(idle)) / sr
+    noise = 0.3 * np.random.default_rng(1).standard_normal(sr * 25)
+    clips = {
+        "healthy": (np.concatenate([start, idle, revs]), start_end, idle_end),
+        "knocking": (np.concatenate([start, idle, knock]), start_end, idle_end),
+        "no_start": (np.concatenate([idle, revs]), None, None),
+        "too_short": (np.concatenate([start, idle[:sr * 4]]), None, None),
+        "white_noise": (noise, None, None),
+    }
+    out = {}
+    for name, (signal, s_end, i_end) in clips.items():
+        path = folder / f"{name}.wav"
+        sf.write(path, signal.astype(np.float32), sr, subtype="PCM_16")
+        out[name] = (path, s_end, i_end)
+    return out
+
+
 def audio(relative_path):
     """Open a file from data/test for a multipart upload."""
     path = TEST_AUDIO / relative_path

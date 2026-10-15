@@ -23,6 +23,34 @@ class ApiConfig {
 }
 
 class ApiService {
+  /// Analyzes one guided recording that covers engine start, idle and revving.
+  /// [startEnd] and [idleEnd] are the seconds at which the app moved the user
+  /// to the next step; the server cuts the recording there. Leave them null for
+  /// an uploaded file, and the server uses its defaults.
+  Future<Map<String, dynamic>> analyzeEngineRecording(String path, {double? startEnd, double? idleEnd}) async {
+    try {
+      final request = http.MultipartRequest('POST', Uri.parse('${ApiConfig.engineApi}/api/v1/analyze'));
+      request.files.add(await http.MultipartFile.fromPath('audio_full', path));
+      if (startEnd != null && idleEnd != null) {
+        request.fields['start_end'] = startEnd.toString();
+        request.fields['idle_end'] = idleEnd.toString();
+      }
+
+      final response = await http.Response.fromStream(await request.send());
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 || body['status'] == 'validation_error') {
+        return body;
+      }
+      return {
+        "status": "error",
+        "status_code": response.statusCode,
+        "message": body['message'] ?? body['error'] ?? "API returned status code ${response.statusCode}",
+      };
+    } catch (e) {
+      return {"status": "error", "message": "Could not reach the engine analysis service. Please try again."};
+    }
+  }
+
   /// Analyzes engine sound from one or more audio stages.
   /// Keys in phasePaths: 'start', 'idle', 'acceleration'
   Future<Map<String, dynamic>> analyzeEngine(Map<String, String> phasePaths) async {

@@ -18,6 +18,9 @@ import '../../widgets/result_sheet.dart';
 import '../../widgets/score_badge.dart';
 import '../../utils/file_validation.dart';
 
+/// One guided recording: the user starts the engine, lets it idle, then revs
+/// gently, following on-screen prompts. The server cuts the recording into the
+/// same three stages at the times the prompts changed.
 class AudioRecordingScreen extends StatefulWidget {
   const AudioRecordingScreen({super.key});
 
@@ -25,52 +28,55 @@ class AudioRecordingScreen extends StatefulWidget {
   State<AudioRecordingScreen> createState() => _AudioRecordingScreenState();
 }
 
+class _GuideStep {
+  final String title;
+  final String instruction;
+  final IconData icon;
+  final int from; // seconds
+  final int to;
+  const _GuideStep(this.title, this.instruction, this.icon, this.from, this.to);
+}
+
 class _AudioRecordingScreenState extends State<AudioRecordingScreen> with SingleTickerProviderStateMixin {
+  // Step boundaries in seconds. They are sent with the upload so the server
+  // cuts the recording where the prompts changed.
+  static const int _startEnd = 8;
+  static const int _idleEnd = 20;
+  static const int _totalSeconds = 30;
+  static const int _minSeconds = 20; // must match MIN_DURATION_FULL on the server
+
+  static const List<_GuideStep> _steps = [
+    _GuideStep('Start the engine', 'Turn the key now', Icons.key, 0, _startEnd),
+    _GuideStep('Let it idle', "Don't touch the accelerator", Icons.hourglass_bottom, _startEnd, _idleEnd),
+    _GuideStep('Rev gently', 'Press the accelerator a few times', Icons.speed, _idleEnd, _totalSeconds),
+  ];
+
   final AuthService _auth = AuthService();
   final AudioRecorder _recorder = AudioRecorder();
   final AudioPlayer _player = AudioPlayer();
-  
+  final ApiService _apiService = ApiService();
+
   Map<String, dynamic> _vehicleData = {};
-  final Map<String, String> _recordingPaths = {};
-  final Map<String, Duration> _recordingDurations = {};
   String _userName = '';
-  Duration _recordingDuration = Duration.zero;
+  String? _profilePicPath;
+
+  Duration _elapsed = Duration.zero;
   Timer? _timer;
   bool _isRecording = false;
-  bool _isPaused = false;
   bool _isPlaying = false;
-  String _recordingPath = '';
-  String? _profilePicPath;
-  String _activePhaseKey = 'engine_start';
   bool _isAnalyzing = false;
-  Map<String, dynamic>? _engineResult;
-  final ApiService _apiService = ApiService();
-  String? _audioFilePath;
 
-  // Recording phases
-  final Map<String, String> _phaseStatus = {
-    'engine_start': 'pending',
-    'idle': 'pending',
-    'acceleration': 'pending',
-  };
+  /// The recording or uploaded file to analyse, and whether it was recorded
+  /// here with the guided timings (an uploaded file uses the server defaults).
+  String _audioPath = '';
+  bool _recordedInApp = false;
 
-  // Per-phase validation error / warning messages from the backend.
-  final Map<String, String> _phaseMessages = {};
-
-  // Backend field name -> UI phase key.
-  static const Map<String, String> _fieldToPhase = {
-    'audio_start': 'engine_start',
-    'audio_idle': 'idle',
-    'audio_acceleration': 'acceleration',
-  };
+  /// Error from the server or a local check, shown on the card.
+  String? _errorMessage;
+  /// Soft warnings from a successful analysis, e.g. no engine start heard.
+  List<String> _warnings = [];
 
   late AnimationController _waveController;
-
-  final List<Map<String, dynamic>> _phases = [
-    {'key': 'engine_start', 'title': 'Engine Start', 'duration': 15},
-    {'key': 'idle', 'title': 'Idle Running', 'duration': 30},
-    {'key': 'acceleration', 'title': 'Acceleration', 'duration': 10},
-  ];
 
   @override
   void initState() {
@@ -99,310 +105,164 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
     }
   }
 
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, "0");
-    String threeDigits(int n) => n.toString().padLeft(3, "0");
-    
-    final minutes = twoDigits(duration.inMinutes.remainder(60));
-    final seconds = twoDigits(duration.inSeconds.remainder(60));
-    final milliseconds = threeDigits(duration.inMilliseconds.remainder(1000)).substring(0, 2);
-    
-    return "$minutes:$seconds:$milliseconds";
+  int get _elapsedSeconds => _elapsed.inSeconds;
+
+  int get _currentStepIndex {
+    for (int i = 0; i < _steps.length; i++) {
+      if (_elapsedSeconds < _steps[i].to) return i;
+    }
+    return _steps.length - 1;
+  }
+
+  String _formatDuration(Duration d) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(d.inMinutes.remainder(60))}:${two(d.inSeconds.remainder(60))}';
   }
 
   Future<void> _startRecording() async {
     try {
-      if (await _recorder.hasPermission()) {
-        final dir = await getApplicationDocumentsDirectory();
-        _audioFilePath = '${dir.path}/engine_recording.wav';
-        
-        await _recorder.start(
-          const RecordConfig(encoder: AudioEncoder.wav),
-          path: _audioFilePath!,
-        );
-        
-        setState(() {
-          _isRecording = true;
-          _isPaused = false;
-          _recordingPath = _audioFilePath!;
-          _recordingDuration = Duration.zero;
-          _phaseStatus[_activePhaseKey] = 'recording';
-          _phaseMessages.remove(_activePhaseKey);
-        });
-
-        _startTimer();
+      if (!await _recorder.hasPermission()) {
+        if (mounted) ToastService.show(context, 'Microphone permission is needed to record', isError: true);
+        return;
       }
-    } catch (e) {
-      ToastService.show(context, "Error starting recorder", isError: true);
-    }
-  }
+      final dir = await getApplicationDocumentsDirectory();
+      final path = '${dir.path}/engine_recording.wav';
+      await _recorder.start(const RecordConfig(encoder: AudioEncoder.wav), path: path);
 
-  void _startTimer() {
-    _timer?.cancel();
-    _timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
       setState(() {
-        _recordingDuration += const Duration(milliseconds: 100);
-        _updatePhases();
+        _isRecording = true;
+        _elapsed = Duration.zero;
+        _audioPath = '';
+        _recordedInApp = true;
+        _errorMessage = null;
+        _warnings = [];
       });
-    });
-  }
 
-  void _updatePhases() {
-    int totalSeconds = _recordingDuration.inSeconds;
-    int maxDuration = _phases.firstWhere((p) => p['key'] == _activePhaseKey)['duration'];
-    
-    // Update only the active phase
-    if (totalSeconds < maxDuration) {
-      _phaseStatus[_activePhaseKey] = 'recording';
-    } else {
-      _phaseStatus[_activePhaseKey] = 'done';
-      _stopRecording();
+      _timer?.cancel();
+      _timer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+        setState(() => _elapsed += const Duration(milliseconds: 100));
+        if (_elapsedSeconds >= _totalSeconds) _stopRecording();
+      });
+    } catch (e) {
+      if (mounted) ToastService.show(context, 'Error starting recorder', isError: true);
     }
   }
 
-  void _switchPhase(String phaseKey) {
-    if (_isRecording || _isPaused) {
-      ToastService.show(context, "Please stop recording before switching phases", isError: true);
-      return;
-    }
-
-    // Preserve the current phase's recording before moving away, but never
-    // promote a phase that failed validation ('error') to 'done' — that clip
-    // was rejected and still needs re-recording.
-    if (_recordingPath.isNotEmpty && _phaseStatus[_activePhaseKey] != 'error') {
-      _recordingPaths[_activePhaseKey] = _recordingPath;
-      _recordingDurations[_activePhaseKey] = _recordingDuration;
-      _phaseStatus[_activePhaseKey] = 'done';
-    }
-
+  Future<void> _stopRecording() async {
+    _timer?.cancel();
+    final path = await _recorder.stop();
+    if (!mounted) return;
     setState(() {
-      _activePhaseKey = phaseKey;
-
-      // Tapping a phase that failed validation is the "Re-record" action:
-      // drop the rejected clip and its message so the user records a fresh
-      // one (otherwise it would falsely read "Done" and get re-submitted).
-      if (_phaseStatus[phaseKey] == 'error') {
-        _recordingPaths.remove(phaseKey);
-        _recordingDurations.remove(phaseKey);
-        _phaseMessages.remove(phaseKey);
-        _phaseStatus[phaseKey] = 'pending';
+      _isRecording = false;
+      if (path != null) _audioPath = path;
+      if (_elapsedSeconds < _minSeconds) {
+        _errorMessage = 'Keep recording for at least $_minSeconds seconds: start, idle, then rev gently.';
       }
-
-      _recordingPath = _recordingPaths[phaseKey] ?? '';
-      _recordingDuration = _recordingDurations[phaseKey] ?? Duration.zero;
-      _isPlaying = false;
-      if (_player.playing) _player.stop();
     });
   }
 
   Future<void> _playRecording() async {
-    if (_recordingPath.isEmpty) return;
+    if (_audioPath.isEmpty) return;
     try {
       if (_isPlaying) {
         await _player.stop();
         setState(() => _isPlaying = false);
       } else {
-        await _player.setFilePath(_recordingPath);
+        await _player.setFilePath(_audioPath);
         setState(() => _isPlaying = true);
         _player.play().then((_) {
           if (mounted) setState(() => _isPlaying = false);
         });
       }
     } catch (e) {
-      ToastService.show(context, "Error playing audio", isError: true);
+      if (mounted) ToastService.show(context, 'Error playing audio', isError: true);
     }
-  }
-
-  Future<void> _pauseRecording() async {
-    await _recorder.pause();
-    _timer?.cancel();
-    setState(() {
-      _isRecording = false;
-      _isPaused = true;
-    });
-  }
-
-  Future<void> _resumeRecording() async {
-    await _recorder.resume();
-    setState(() {
-      _isRecording = true;
-      _isPaused = false;
-    });
-    _timer = Timer.periodic(const Duration(milliseconds: 100), (timer) {
-      setState(() {
-        _recordingDuration += const Duration(milliseconds: 100);
-        _updatePhases();
-      });
-    });
-  }
-
-  Future<void> _stopRecording() async {
-    final path = await _recorder.stop();
-    _timer?.cancel();
-    setState(() {
-      _isRecording = false;
-      _isPaused = false;
-      _phaseStatus[_activePhaseKey] = 'done';
-      if (path != null) {
-        _recordingPath = path;
-        _recordingPaths[_activePhaseKey] = path;
-        _recordingDurations[_activePhaseKey] = _recordingDuration;
-      }
-    });
   }
 
   Future<void> _pickAudioFile() async {
+    if (_isRecording) return;
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
-        type: FileType.any, // Use any to ensure files are visible on all devices
-      );
+      final result = await FilePicker.platform.pickFiles(type: FileType.any);
+      if (result == null || result.files.single.path == null) return;
+      final path = result.files.single.path!;
 
-
-      if (result != null && result.files.single.path != null) {
-        String path = result.files.single.path!;
-
-        final validationError = validateFileExtension(
-          path,
-          allowedAudioExtensions,
-          'WAV, MP3, M4A, or MP4 audio',
-        );
-        if (validationError != null) {
-          if (!mounted) return;
-          ToastService.show(context, validationError, isError: true);
-          return;
-        }
-
-        setState(() {
-          _audioFilePath = path;
-          _recordingPath = path;
-          _recordingDuration = const Duration(seconds: 5); // Minimum duration to show it's valid
-          _phaseStatus[_activePhaseKey] = 'done';
-          _recordingPaths[_activePhaseKey] = path;
-        });
-        ToastService.show(context, "Audio file selected");
+      final validationError = validateFileExtension(path, allowedAudioExtensions, 'WAV, MP3, M4A, or MP4 audio');
+      if (validationError != null) {
+        if (mounted) ToastService.show(context, validationError, isError: true);
+        return;
       }
+
+      setState(() {
+        _audioPath = path;
+        _recordedInApp = false;
+        _elapsed = Duration.zero;
+        _errorMessage = null;
+        _warnings = [];
+      });
+      if (mounted) ToastService.show(context, 'Audio file selected');
     } catch (e) {
-      ToastService.show(context, "Error picking audio file", isError: true);
+      if (mounted) ToastService.show(context, 'Error picking audio file', isError: true);
     }
   }
 
-  void _resetRecording() {
-
-    if (_isRecording || _isPaused) {
+  void _discardRecording() {
+    if (_isRecording) {
       _recorder.stop();
       _timer?.cancel();
     }
+    if (_player.playing) _player.stop();
     setState(() {
       _isRecording = false;
-      _isPaused = false;
-      _recordingDuration = Duration.zero;
-      _recordingPath = '';
       _isPlaying = false;
-      _phaseStatus[_activePhaseKey] = 'pending';
-      _recordingPaths.remove(_activePhaseKey);
-      _recordingDurations.remove(_activePhaseKey);
-      _phaseMessages.remove(_activePhaseKey);
+      _elapsed = Duration.zero;
+      _audioPath = '';
+      _errorMessage = null;
+      _warnings = [];
     });
   }
 
   Future<void> _handleNext() async {
-    // All three stages must have a valid recording before we can analyze.
-    // Missing = never recorded/uploaded; failed = a clip that was rejected by
-    // validation and still needs re-recording.
-    final missing = <String>[];
-    final failed = <String>[];
-    for (final phase in _phases) {
-      final key = phase['key'] as String;
-      final title = phase['title'] as String;
-      final path = _recordingPaths[key];
-      if (path == null || path.isEmpty) {
-        missing.add(title);
-      } else if (_phaseStatus[key] == 'error') {
-        failed.add(title);
-      }
+    if (_isRecording) {
+      ToastService.show(context, 'Please wait until the recording finishes', isError: true);
+      return;
     }
-
-    if (missing.isNotEmpty || failed.isNotEmpty) {
-      final parts = <String>[];
-      if (missing.isNotEmpty) parts.add('record ${missing.join(', ')}');
-      if (failed.isNotEmpty) parts.add('re-record ${failed.join(', ')}');
-      ToastService.show(
-        context,
-        'Please ${parts.join(' and ')} before continuing.',
-        isError: true,
-      );
+    if (_audioPath.isEmpty) {
+      ToastService.show(context, 'Please record the engine or upload an audio file first.', isError: true);
+      return;
+    }
+    if (_recordedInApp && _elapsedSeconds < _minSeconds) {
+      ToastService.show(context, 'The recording is too short. Please record again.', isError: true);
       return;
     }
 
-    // All stages present — build the paths map for the API.
-    final Map<String, String> phasePaths = {};
-    _recordingPaths.forEach((key, path) {
-      if (path.isNotEmpty) {
-        phasePaths[key] = path;
-      }
-    });
-
     setState(() => _isAnalyzing = true);
-
-    final result = await _apiService.analyzeEngine(phasePaths);
-
+    final result = await _apiService.analyzeEngineRecording(
+      _audioPath,
+      startEnd: _recordedInApp ? _startEnd.toDouble() : null,
+      idleEnd: _recordedInApp ? _idleEnd.toDouble() : null,
+    );
     if (!mounted) return;
-    setState(() {
-      _engineResult = result;
-      _isAnalyzing = false;
-    });
+    setState(() => _isAnalyzing = false);
 
     final status = result['status'];
     if (status == 'success') {
-      // Soft warnings (e.g. wrong stage) don't block — surface, then continue.
-      final warnings = _collectStageMessages(result, wantWarnings: true);
+      final warnings = <String>[];
+      final stages = result['stages'];
+      if (stages is Map) {
+        for (final stage in stages.values) {
+          if (stage is Map && stage['warning'] != null) warnings.add(stage['warning'].toString());
+        }
+      }
       setState(() {
-        _phaseMessages
-          ..clear()
-          ..addAll(warnings);
+        _errorMessage = null;
+        _warnings = warnings;
       });
       _showEngineResult(result);
-    } else if (status == 'validation_error') {
-      // Hard failures: mark the offending phases and show why. Don't advance.
-      final errors = _collectStageMessages(result, wantWarnings: false);
-      setState(() {
-        _phaseMessages
-          ..clear()
-          ..addAll(errors);
-        errors.forEach((phase, _) => _phaseStatus[phase] = 'error');
-      });
-      ToastService.show(
-        context,
-        result['message'] ?? 'Some recordings need to be re-recorded.',
-        isError: true,
-      );
     } else {
-      ToastService.show(
-        context,
-        'Analysis failed: ${result["message"] ?? result["error"] ?? result["reason"] ?? "Unknown error"}',
-        isError: true,
-      );
+      final message = result['message']?.toString() ?? 'The recording could not be analysed. Please record again.';
+      setState(() => _errorMessage = message);
+      ToastService.show(context, message, isError: true);
     }
-  }
-
-  /// Extracts per-phase messages from the response `stages` block.
-  /// wantWarnings=true collects soft warnings on valid stages; false collects
-  /// blocking messages on invalid stages.
-  Map<String, String> _collectStageMessages(Map<String, dynamic> result, {required bool wantWarnings}) {
-    final out = <String, String>{};
-    final stages = result['stages'];
-    if (stages is Map) {
-      stages.forEach((field, data) {
-        final phase = _fieldToPhase[field];
-        if (phase == null || data is! Map) return;
-        if (wantWarnings) {
-          if (data['warning'] != null) out[phase] = data['warning'].toString();
-        } else if (data['valid'] == false && data['message'] != null) {
-          out[phase] = data['message'].toString();
-        }
-      });
-    }
-    return out;
   }
 
   void _showEngineResult(Map<String, dynamic> result) {
@@ -433,6 +293,11 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
           const SizedBox(height: 8),
           Text('Confidence: ${result["confidence_percent"]}',
               style: const TextStyle(color: AppColors.textGray, fontSize: 12)),
+          for (final warning in _warnings) ...[
+            const SizedBox(height: 10),
+            Text(warning,
+                textAlign: TextAlign.center, style: const TextStyle(color: AppColors.statusAmber, fontSize: 12)),
+          ],
         ],
       ),
       ctaLabel: 'Continue to Body Scan',
@@ -446,7 +311,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
             'fault_class': result['fault_class'],
             'confidence': result['confidence'],
             'mhs_score': result['mhs_score'],
-            'audio_file': _audioFilePath,
+            'audio_file': _audioPath,
           },
         );
       },
@@ -464,6 +329,9 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
 
   @override
   Widget build(BuildContext context) {
+    final step = _steps[_currentStepIndex];
+    final hasRecording = _audioPath.isNotEmpty;
+
     return Scaffold(
       backgroundColor: AppColors.darkNavyBg,
       appBar: InspectionAppBar(
@@ -483,42 +351,74 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
               alignment: Alignment.center,
               child: const ProgressStepper(currentStep: 1),
             ),
-            
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-                    // Recording Card
                     AppCard(
                       child: Column(
                         children: [
-                          Container(
-                            width: 48,
-                            height: 48,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: AppColors.darkNavyBg,
+                          // What to do right now
+                          if (_isRecording) ...[
+                            Icon(step.icon, color: AppColors.primaryBlue, size: 36),
+                            const SizedBox(height: 8),
+                            Text(step.title,
+                                style: const TextStyle(
+                                    color: AppColors.textWhite, fontSize: 22, fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 4),
+                            Text(step.instruction,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(color: AppColors.textGray, fontSize: 14)),
+                            const SizedBox(height: 4),
+                            Text('${(step.to - _elapsedSeconds).clamp(0, step.to)} s',
+                                style: const TextStyle(
+                                    color: AppColors.statusAmber, fontSize: 16, fontWeight: FontWeight.bold)),
+                          ] else ...[
+                            Container(
+                              width: 48,
+                              height: 48,
+                              decoration: const BoxDecoration(shape: BoxShape.circle, color: AppColors.darkNavyBg),
+                              child: const Icon(Icons.mic, color: AppColors.textWhite, size: 28),
                             ),
-                            child: Icon(
-                              Icons.mic,
-                              color: _isRecording ? AppColors.statusRed : AppColors.textWhite,
-                              size: 28,
+                            const SizedBox(height: 8),
+                            Text(
+                              hasRecording
+                                  ? (_recordedInApp ? 'Recording ready' : 'Audio file selected')
+                                  : 'One recording, about $_totalSeconds seconds',
+                              style: const TextStyle(
+                                  color: AppColors.textWhite, fontSize: 18, fontWeight: FontWeight.bold),
+                            ),
+                            if (!hasRecording)
+                              const Padding(
+                                padding: EdgeInsets.only(top: 4),
+                                child: Text(
+                                  'With the engine off, tap Start and follow the prompts.',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(color: AppColors.textGray, fontSize: 13),
+                                ),
+                              ),
+                          ],
+                          const SizedBox(height: 12),
+
+                          // Progress through the 30 seconds
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: (_elapsed.inMilliseconds / (_totalSeconds * 1000)).clamp(0.0, 1.0),
+                              minHeight: 6,
+                              backgroundColor: AppColors.darkNavySurface,
+                              color: AppColors.primaryBlue,
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 6),
                           Text(
-                            _formatDuration(_recordingDuration),
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textWhite,
-                              fontFamily: 'monospace',
-                            ),
+                            '${_formatDuration(_elapsed)} / ${_formatDuration(const Duration(seconds: _totalSeconds))}',
+                            style: const TextStyle(color: AppColors.textGray, fontSize: 12, fontFamily: 'monospace'),
                           ),
                           const SizedBox(height: 12),
-                          
-                          // Waveform
+
+                          // Waveform while recording, playback afterwards
                           Container(
                             height: 60,
                             width: double.infinity,
@@ -527,266 +427,120 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                               borderRadius: BorderRadius.circular(30),
                             ),
                             child: _isRecording
-                              ? AnimatedBuilder(
-                                  animation: _waveController,
-                                  builder: (context, child) {
-                                    return CustomPaint(
-                                      painter: WaveformPainter(animationValue: _waveController.value),
-                                    );
-                                  },
-                                )
-                              : _recordingPath.isNotEmpty
-                                  ? Center(
-                                      child: Row(
-                                        mainAxisAlignment: MainAxisAlignment.center,
-                                        children: [
-                                          IconButton(
-                                            icon: Icon(_isPlaying ? Icons.stop : Icons.play_arrow, color: Colors.white),
-                                            onPressed: _playRecording,
-                                          ),
-                                          const Text("Listen to recording", style: TextStyle(color: Colors.white, fontSize: 14)),
-                                        ],
+                                ? AnimatedBuilder(
+                                    animation: _waveController,
+                                    builder: (context, child) =>
+                                        CustomPaint(painter: WaveformPainter(animationValue: _waveController.value)),
+                                  )
+                                : hasRecording
+                                    ? Center(
+                                        child: Row(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            IconButton(
+                                              icon: Icon(_isPlaying ? Icons.stop : Icons.play_arrow,
+                                                  color: Colors.white),
+                                              onPressed: _playRecording,
+                                            ),
+                                            const Text('Listen to recording',
+                                                style: TextStyle(color: Colors.white, fontSize: 14)),
+                                          ],
+                                        ),
+                                      )
+                                    : const Center(
+                                        child: Text('Tap Start to record',
+                                            style: TextStyle(color: AppColors.textGray, fontSize: 12)),
                                       ),
-                                    )
-                                  : const Center(
-                                      child: Text(
-                                        "Tap Start to record",
-                                        style: TextStyle(color: AppColors.textGray, fontSize: 12),
-                                      ),
-                                    ),
                           ),
+
+                          if (_errorMessage != null) ...[
+                            const SizedBox(height: 12),
+                            _messageRow(_errorMessage!, AppColors.statusRed, Icons.error_outline),
+                          ],
+                          for (final warning in _warnings) ...[
+                            const SizedBox(height: 8),
+                            _messageRow(warning, AppColors.statusAmber, Icons.warning_amber_rounded),
+                          ],
                           const SizedBox(height: 12),
-                          
+
                           // Controls
                           Wrap(
                             alignment: WrapAlignment.center,
                             spacing: 8,
                             runSpacing: 8,
                             children: [
-                              OutlinedButton(
-                                onPressed: _resetRecording,
-                                style: OutlinedButton.styleFrom(
-                                  side: BorderSide(color: _recordingPath.isNotEmpty ? AppColors.statusRed : AppColors.textGray),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(_recordingPath.isNotEmpty ? Icons.delete_outline : Icons.refresh, 
-                                        size: 14, color: _recordingPath.isNotEmpty ? AppColors.statusRed : AppColors.textGray),
-                                    const SizedBox(width: 4),
-                                    Text(_recordingPath.isNotEmpty ? "Discard" : "Reset", 
-                                        style: TextStyle(color: _recordingPath.isNotEmpty ? AppColors.statusRed : AppColors.textGray, fontSize: 13)),
-                                  ],
-                                ),
-                              ),
-                              
-                              OutlinedButton(
-                                onPressed: _pickAudioFile,
-                                style: OutlinedButton.styleFrom(
-                                  side: const BorderSide(color: AppColors.textFieldBorder),
-                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                ),
-                                child: const Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.upload_file, size: 14, color: AppColors.textGray),
-                                    SizedBox(width: 4),
-                                    Text("Upload", style: TextStyle(color: AppColors.textGray, fontSize: 13)),
-                                  ],
-                                ),
-                              ),
-                              
-                              if (!_isRecording && !_isPaused)
-                                ElevatedButton(
-                                  onPressed: _recordingPath.isNotEmpty ? _handleNext : _startRecording,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.primaryBlue,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                                  ),
-                                  child: Text(
-                                    _recordingPath.isNotEmpty ? "Confirm" : "Start", 
-                                    style: const TextStyle(color: Colors.white, fontSize: 13)
-                                  ),
-                                ),
-                                
+                              if (hasRecording || _isRecording)
+                                _outlinedButton(Icons.delete_outline, 'Discard', AppColors.statusRed, _discardRecording),
+                              if (!_isRecording)
+                                _outlinedButton(Icons.upload_file, 'Upload', AppColors.textGray, _pickAudioFile),
                               if (_isRecording)
-                                OutlinedButton(
-                                  onPressed: _pauseRecording,
-                                  style: OutlinedButton.styleFrom(
-                                    side: const BorderSide(color: AppColors.textFieldBorder),
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  ),
-                                  child: const Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(Icons.pause, size: 14, color: AppColors.textWhite),
-                                      SizedBox(width: 4),
-                                      Text("Pause", style: TextStyle(color: AppColors.textWhite, fontSize: 13)),
-                                    ],
-                                  ),
-                                ),
-                                
-                              if (_isPaused) ...[
-                                ElevatedButton(
-                                  onPressed: _resumeRecording,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.primaryBlue,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  ),
-                                  child: const Text("Resume", style: TextStyle(color: Colors.white, fontSize: 13)),
-                                ),
-                                ElevatedButton(
-                                  onPressed: _stopRecording,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.statusRed,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        width: 8,
-                                        height: 8,
-                                        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      const Text("Stop", style: TextStyle(color: Colors.white, fontSize: 13)),
-                                    ],
-                                  ),
-                                ),
-                              ] else if (_isRecording)
-                                ElevatedButton(
-                                  onPressed: _stopRecording,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.statusRed,
-                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Container(
-                                        width: 8,
-                                        height: 8,
-                                        decoration: const BoxDecoration(color: Colors.white, shape: BoxShape.circle),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      const Text("Stop", style: TextStyle(color: Colors.white, fontSize: 13)),
-                                    ],
-                                  ),
-                                ),
+                                _filledButton('Stop', AppColors.statusRed, _stopRecording)
+                              else if (hasRecording && _errorMessage == null)
+                                _filledButton('Analyze', AppColors.primaryBlue, _handleNext)
+                              else
+                                _filledButton(hasRecording ? 'Record again' : 'Start', AppColors.primaryBlue,
+                                    _startRecording),
                             ],
                           ),
-
                         ],
                       ),
                     ),
-                    
                     const SizedBox(height: 16),
-                    
-                    // Phases
-                    ...List.generate(_phases.length, (index) {
-                      final phase = _phases[index];
-                      final status = _phaseStatus[phase['key']];
-                      return GestureDetector(
-                        onTap: () => _switchPhase(phase['key']),
-                        child: Container(
-                          margin: const EdgeInsets.only(bottom: 8),
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            color: AppColors.darkNavySurface,
-                            borderRadius: BorderRadius.circular(10),
-                            border: _activePhaseKey == phase['key']
-                                ? Border.all(color: AppColors.primaryBlue, width: 1) 
-                                : null,
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    RichText(
-                                      text: TextSpan(
-                                        children: [
-                                          TextSpan(
-                                            text: phase['title'],
-                                            style: const TextStyle(color: AppColors.textWhite, fontWeight: FontWeight.bold, fontSize: 14),
-                                          ),
-                                          if (phase['subtitle'] != null)
-                                            TextSpan(
-                                              text: " - ${phase['subtitle']}",
-                                              style: const TextStyle(color: AppColors.textGray, fontSize: 13),
-                                            ),
-                                        ],
-                                      ),
-                                    ),
-                                    if (_phaseMessages[phase['key']] != null)
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 4),
-                                        child: Row(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Icon(
-                                              status == 'error' ? Icons.error_outline : Icons.warning_amber_rounded,
-                                              size: 13,
-                                              color: status == 'error' ? AppColors.statusRed : AppColors.statusAmber,
-                                            ),
-                                            const SizedBox(width: 4),
-                                            Expanded(
-                                              child: Text(
-                                                _phaseMessages[phase['key']]!,
-                                                style: TextStyle(
-                                                  color: status == 'error' ? AppColors.statusRed : AppColors.statusAmber,
-                                                  fontSize: 11,
-                                                ),
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                  ],
-                                ),
+
+                    // The three steps the prompts will walk through
+                    ...List.generate(_steps.length, (i) {
+                      final s = _steps[i];
+                      final active = _isRecording && i == _currentStepIndex;
+                      final done = (_isRecording && i < _currentStepIndex) ||
+                          (!_isRecording && hasRecording && _recordedInApp && _elapsedSeconds >= s.to);
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: AppColors.darkNavySurface,
+                          borderRadius: BorderRadius.circular(10),
+                          border: active ? Border.all(color: AppColors.primaryBlue, width: 1) : null,
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(s.icon, size: 20, color: active ? AppColors.primaryBlue : AppColors.textGray),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text('${i + 1}. ${s.title}',
+                                      style: const TextStyle(
+                                          color: AppColors.textWhite, fontWeight: FontWeight.bold, fontSize: 14)),
+                                  Text(s.instruction, style: const TextStyle(color: AppColors.textGray, fontSize: 12)),
+                                ],
                               ),
-                              if (status == 'done')
-                                const Text("Done", style: TextStyle(color: AppColors.statusGreen, fontSize: 13, fontWeight: FontWeight.bold))
-                              else if (status == 'error')
-                                const Text("Re-record", style: TextStyle(color: AppColors.statusRed, fontSize: 13, fontWeight: FontWeight.bold))
-                              else if (status == 'recording')
-                                Text(
-                                  "${_getRemainingSeconds(phase['key'])} sec",
-                                  style: const TextStyle(color: AppColors.statusAmber, fontSize: 13),
-                                ),
-                            ],
-                          ),
+                            ),
+                            Text(
+                              done ? 'Done' : '${s.from}-${s.to} s',
+                              style: TextStyle(
+                                color: done ? AppColors.statusGreen : AppColors.textGray,
+                                fontSize: 13,
+                                fontWeight: done ? FontWeight.bold : FontWeight.normal,
+                              ),
+                            ),
+                          ],
                         ),
                       );
                     }),
-                    
                     const SizedBox(height: 16),
-                    
-                    // Tips
+
                     Row(
                       children: [
-                        _buildTipCard(Icons.menu_open, "Bonnet open", "for best pickup"),
+                        _buildTipCard(Icons.menu_open, 'Bonnet open', 'for best pickup'),
                         const SizedBox(width: 8),
-                        _buildTipCard(Icons.social_distance, "10 cm away", "from the engine"),
+                        _buildTipCard(Icons.social_distance, '10 cm away', 'from the engine'),
                         const SizedBox(width: 8),
-                        _buildTipCard(Icons.back_hand, "Steady hand", "reduce vibration"),
+                        _buildTipCard(Icons.volume_off, 'Keep quiet', 'no talking or music'),
                       ],
                     ),
-                    
                     const SizedBox(height: 24),
-                    
-                    // Bottom Nav
+
                     NavButtonRow(
                       onBack: () => Navigator.pop(context),
                       onNext: _handleNext,
@@ -802,13 +556,46 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
     );
   }
 
-  int _getRemainingSeconds(String phaseKey) {
-    Duration duration = (phaseKey == _activePhaseKey) ? _recordingDuration : (_recordingDurations[phaseKey] ?? Duration.zero);
-    int current = duration.inSeconds;
-    
-    int maxDuration = _phases.firstWhere((p) => p['key'] == phaseKey)['duration'];
-    
-    return (maxDuration - current).clamp(0, maxDuration);
+  Widget _messageRow(String text, Color color, IconData icon) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 6),
+        Expanded(child: Text(text, style: TextStyle(color: color, fontSize: 12))),
+      ],
+    );
+  }
+
+  Widget _outlinedButton(IconData icon, String label, Color color, VoidCallback onPressed) {
+    return OutlinedButton(
+      onPressed: onPressed,
+      style: OutlinedButton.styleFrom(
+        side: BorderSide(color: color == AppColors.textGray ? AppColors.textFieldBorder : color),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(label, style: TextStyle(color: color, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  Widget _filledButton(String label, Color color, VoidCallback onPressed) {
+    return ElevatedButton(
+      onPressed: onPressed,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      ),
+      child: Text(label, style: const TextStyle(color: Colors.white, fontSize: 13)),
+    );
   }
 
   Widget _buildTipCard(IconData icon, String line1, String line2) {
@@ -823,7 +610,9 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
           children: [
             Icon(icon, color: AppColors.textGray, size: 22),
             const SizedBox(height: 6),
-            Text(line1, style: const TextStyle(color: AppColors.textWhite, fontSize: 10, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+            Text(line1,
+                style: const TextStyle(color: AppColors.textWhite, fontSize: 10, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center),
             Text(line2, style: const TextStyle(color: AppColors.textGray, fontSize: 9), textAlign: TextAlign.center),
           ],
         ),
@@ -845,12 +634,12 @@ class WaveformPainter extends CustomPainter {
     int barCount = 40;
     double barWidth = 4;
     double spacing = (size.width - (barCount * barWidth)) / (barCount + 1);
-    
+
     for (int i = 0; i < barCount; i++) {
       // Random-ish height based on animation and index
       double heightFactor = (0.2 + 0.8 * (0.5 + 0.5 * (i % 5 == 0 ? 0.8 : 0.4))).clamp(0.2, 1.0);
       double height = size.height * heightFactor * (0.6 + 0.4 * (0.5 + 0.5 * (i % 2 == 0 ? 0.5 : -0.5)));
-      
+
       // Animate height slightly
       height = height * (0.8 + 0.2 * (0.5 + 0.5 * (i % 3 == 0 ? animationValue : 1 - animationValue)));
 

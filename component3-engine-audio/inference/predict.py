@@ -24,6 +24,17 @@ MIN_DURATION = 3.0
 # A healthy engine can catch in under two seconds, so the start stage gets a
 # shorter minimum (real starts in data/test are 1.6-2.2 s long).
 MIN_DURATION_START = float(os.getenv("MIN_DURATION_START", 1.5))
+
+# --- Single guided recording ---
+# The app asks for one ~30 s recording: start the engine, let it idle, then
+# rev gently, with on-screen prompts. The server cuts it into the same three
+# stages at the times the app showed (sent with the upload), falling back to
+# these defaults. Idle and revving are cut by time, not detected, because
+# YAMNet cannot tell them apart reliably.
+MIN_DURATION_FULL = float(os.getenv("MIN_DURATION_FULL", 20.0))
+DEFAULT_START_END = 8.0
+DEFAULT_IDLE_END = 20.0
+MIN_SEGMENT = 2.0          # shortest stage we will classify
 MAX_DURATION = float(os.getenv("MAX_DURATION", 120.0))
 MIN_AMPLITUDE = 0.01
 
@@ -131,12 +142,13 @@ def load_models():
     return yamnet_model, svm_model, scaler, label_map
 
 
-def validate_audio(file_path, expected_stage=None):
+def validate_audio(file_path, expected_stage=None, min_duration=None):
     """
     Load the audio file to validate duration and amplitude.
     Returns: dict with keys: is_valid (bool), duration (float), reason (str).
     """
-    min_duration = MIN_DURATION_START if expected_stage == "audio_start" else MIN_DURATION
+    if min_duration is None:
+        min_duration = MIN_DURATION_START if expected_stage == "audio_start" else MIN_DURATION
     try:
         audio, sr = librosa.load(file_path, sr=None)
         duration = float(librosa.get_duration(y=audio, sr=sr))
@@ -182,6 +194,21 @@ def _get_yamnet_classes(yamnet_model):
     return _YAMNET_CLASS_IDX
 
 
+# A fixed, inaudible noise floor (about -80 dBFS) added before YAMNet. 16-bit
+# recordings turn near-silent stretches (e.g. before the key is turned) into
+# runs of one-step values, and the classifier reacted to that pattern: a
+# healthy start was rated "misfiring" after a 16-bit save. With this floor the
+# 16 clips in data/test keep their classes and the 16-bit case is stable.
+# Seeded so the same file always gives the same result.
+DITHER_LEVEL = 1e-4
+
+
+def _prepare(audio):
+    audio = np.asarray(audio, dtype=np.float32)
+    noise = np.random.default_rng(0).standard_normal(len(audio)).astype(np.float32)
+    return audio + DITHER_LEVEL * noise
+
+
 def run_yamnet(yamnet_model, file_path):
     """
     Single YAMNet pass. Returns dict with the mean embedding (for the SVM),
@@ -189,9 +216,8 @@ def run_yamnet(yamnet_model, file_path):
     """
     try:
         audio, sr = librosa.load(file_path, sr=SAMPLE_RATE, mono=True)
-        audio = audio.astype(np.float32)
 
-        scores, embeddings, spectrogram = yamnet_model(audio)
+        scores, embeddings, spectrogram = yamnet_model(_prepare(audio))
         scores = scores.numpy()  # (frames, 521)
 
         return {
@@ -349,7 +375,8 @@ def validate_and_analyze_stage(file_path, expected_stage, yamnet_model, svm_mode
 
 
 # Fields safe to expose to the client (drops internal health scoring detail).
-_PUBLIC_STAGE_KEYS = ("valid", "code", "message", "warning", "duration", "detected", "mhs_score")
+_PUBLIC_STAGE_KEYS = ("valid", "code", "message", "warning", "duration", "detected", "mhs_score",
+                      "start", "end")
 
 
 def _public_stages(stages):
@@ -385,9 +412,13 @@ def analyze(file_map, yamnet_model, svm_model, scaler, label_map):
             "stages": _public_stages(stages),
         }
 
-    # All stages valid: worst-case aggregation (a fault in any stage matters).
+    return _summarise(stages)
+
+
+def _summarise(stages):
+    """Worst-case aggregation over valid stages (a fault in any stage matters)."""
     worst = min(stages.values(), key=lambda s: s["mhs_score"])
-    result = {
+    return {
         "status": "success",
         "fault_class": worst["fault_class"],
         "confidence": worst["confidence"],
@@ -396,11 +427,95 @@ def analyze(file_map, yamnet_model, svm_model, scaler, label_map):
         "color_indicator": worst["color_indicator"],
         "explanation": worst["explanation"],
         "recommend_professional": worst["recommend_professional"],
-        "is_multi_stage": len(file_map) > 1,
-        "total_stages": len(file_map),
+        "is_multi_stage": len(stages) > 1,
+        "total_stages": len(stages),
         "stages_passed": len(stages),
         "stages": _public_stages(stages),
     }
+
+
+def _stage_bounds(duration, start_end=None, idle_end=None):
+    """
+    Start/idle/acceleration boundaries in seconds, clamped so every stage is
+    at least MIN_SEGMENT long.
+    """
+    start_end = DEFAULT_START_END if start_end is None else float(start_end)
+    idle_end = DEFAULT_IDLE_END if idle_end is None else float(idle_end)
+    start_end = min(max(start_end, MIN_SEGMENT), duration - 2 * MIN_SEGMENT)
+    idle_end = min(max(idle_end, start_end + MIN_SEGMENT), duration - MIN_SEGMENT)
+    return {
+        "audio_start": (0.0, start_end),
+        "audio_idle": (start_end, idle_end),
+        "audio_acceleration": (idle_end, duration),
+    }
+
+
+def analyze_recording(file_path, yamnet_model, svm_model, scaler, label_map,
+                      start_end=None, idle_end=None):
+    """
+    Analyse one continuous recording that covers start, idle and revving.
+
+    The whole clip is checked once (readable, long enough, an engine, not
+    drowned out), then cut into the three stages. Each stage is analysed on
+    its own, as if it had been uploaded separately, and the worst stage
+    decides the result. If no engine start is heard, the start stage still gets a
+    result but carries a warning, because battery and starter faults can only
+    be heard at start.
+    """
+    def rejected(code, message, duration=None):
+        stage = {"valid": False, "code": code, "message": message}
+        if duration is not None:
+            stage["duration"] = round(duration, 2)
+        return {"status": "validation_error", "message": message, "stages": {"audio_full": stage}}
+
+    val = validate_audio(file_path, min_duration=MIN_DURATION_FULL)
+    if not val["is_valid"]:
+        return rejected(val["code"], val["reason"], val["duration"])
+    duration = val["duration"]
+
+    try:
+        audio, _ = librosa.load(file_path, sr=SAMPLE_RATE, mono=True)
+        scores = yamnet_model(_prepare(audio))[0].numpy()
+    except Exception as e:
+        print(f"YAMNet pass failed: {str(e)}")
+        return rejected("FEATURE_FAIL", "Could not analyse this recording. Please re-record it.", duration)
+
+    class_idx = _get_yamnet_classes(yamnet_model)
+    content = check_content(scores.mean(axis=0), scores.max(axis=0), None, class_idx)
+    if content["competing"]:
+        return rejected("OTHER_SOUND",
+                        f"We could hear {content['competing']} more clearly than the engine. "
+                        "Record again close to the engine, without talking or music nearby.", duration)
+    if not content["is_engine"]:
+        return rejected("NOT_ENGINE",
+                        "This doesn't sound like an engine. Record the running engine "
+                        "with the bonnet open, about 10 cm away.", duration)
+
+    starting_idx = class_idx.get(STAGE_CLASSES["audio_start"])
+    stages = {}
+    for field, (begin, end) in _stage_bounds(duration, start_end, idle_end).items():
+        # Each stage is cut out and run through YAMNet on its own, exactly like
+        # a separately uploaded clip, which is what the classifier was trained on.
+        segment = audio[int(begin * SAMPLE_RATE):int(end * SAMPLE_RATE)]
+        seg_scores, seg_embeddings, _ = yamnet_model(_prepare(segment))
+        seg_scores = seg_scores.numpy()
+        stage = {"valid": True, "code": "OK", "duration": round(end - begin, 2),
+                 "start": round(begin, 2), "end": round(end, 2)}
+        stage.update(_health_from_embedding(seg_embeddings.numpy().mean(axis=0), svm_model, scaler,
+                                            label_map, end - begin))
+        if field == "audio_start":
+            heard_start = starting_idx is not None and seg_scores[:, starting_idx].max() >= STAGE_START_HINT
+            stage["detected"] = "start" if heard_start else "running_engine"
+            if not heard_start:
+                stage["warning"] = ("We didn't hear the engine start, so battery and starter problems "
+                                    "couldn't be checked. Start recording before you turn the key.")
+        else:
+            stage["detected"] = "running_engine"
+        stages[field] = stage
+
+    result = _summarise(stages)
+    result["mode"] = "single_recording"
+    result["duration"] = round(duration, 2)
     return result
 
 

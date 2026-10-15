@@ -130,3 +130,55 @@ def test_deployment_test_endpoint(client, auth):
 def test_uploads_are_deleted(client, auth, app_module):
     post(client, three_stages(), auth)
     assert os.listdir(app_module.UPLOAD_FOLDER) == []
+
+
+# --- One guided recording covering start, idle and revving ---
+
+def post_full(client, auth, recording):
+    path, start_end, idle_end = recording
+    data = {"audio_full": (open(path, "rb"), path.name)}
+    if start_end is not None:
+        data["start_end"], data["idle_end"] = str(start_end), str(idle_end)
+    return post(client, data, auth)
+
+
+def test_full_recording_healthy(client, auth, full_recordings):
+    r = post_full(client, auth, full_recordings["healthy"])
+    body = r.get_json()
+    assert r.status_code == 200
+    assert body["mode"] == "single_recording"
+    assert body["fault_class"] == "healthy"
+    assert set(body["stages"]) == {"audio_start", "audio_idle", "audio_acceleration"}
+    assert body["stages"]["audio_start"]["detected"] == "start"
+
+
+def test_full_recording_uses_the_app_stage_times(client, auth, full_recordings):
+    _, start_end, idle_end = full_recordings["healthy"]
+    stages = post_full(client, auth, full_recordings["healthy"]).get_json()["stages"]
+    assert stages["audio_start"]["end"] == round(start_end, 2)
+    assert stages["audio_idle"]["start"] == round(start_end, 2)
+    assert stages["audio_acceleration"]["start"] == round(idle_end, 2)
+
+
+def test_full_recording_fault_in_one_stage(client, auth, full_recordings):
+    body = post_full(client, auth, full_recordings["knocking"]).get_json()
+    assert body["fault_class"] == "knocking"
+    assert body["color_indicator"] == "red"
+
+
+def test_full_recording_without_engine_start_warns(client, auth, full_recordings):
+    r = post_full(client, auth, full_recordings["no_start"])
+    assert r.status_code == 200
+    assert "warning" in r.get_json()["stages"]["audio_start"]
+
+
+def test_full_recording_too_short(client, auth, full_recordings):
+    r = post_full(client, auth, full_recordings["too_short"])
+    assert r.status_code == 422
+    assert r.get_json()["stages"]["audio_full"]["code"] == "TOO_SHORT"
+
+
+def test_full_recording_of_noise_is_rejected(client, auth, full_recordings):
+    r = post_full(client, auth, full_recordings["white_noise"])
+    assert r.status_code == 422
+    assert r.get_json()["stages"]["audio_full"]["code"] == "OTHER_SOUND"
