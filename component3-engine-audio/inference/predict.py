@@ -21,6 +21,9 @@ LABEL_MAP_PATH = "data/processed/embeddings.json"
 YAMNET_URL = "https://tfhub.dev/google/yamnet/1"
 SAMPLE_RATE = 16000
 MIN_DURATION = 3.0
+# A healthy engine can catch in under two seconds, so the start stage gets a
+# shorter minimum (real starts in data/test are 1.6-2.2 s long).
+MIN_DURATION_START = float(os.getenv("MIN_DURATION_START", 1.5))
 MAX_DURATION = float(os.getenv("MAX_DURATION", 120.0))
 MIN_AMPLITUDE = 0.01
 
@@ -43,12 +46,25 @@ STAGE_CLASSES = {
 #   silence / tones / white / pink noise -> 0.00-0.03   (reject)
 #   faulty battery-crank start (real engine) -> 0.086    (keep)
 #   real running engines -> 0.25-1.33                    (keep)
-# 0.04 sits between garbage and the faulty-engine floor.
-# LIMITATION: speech/music can score ~0.15 (above a faulty crank), so this
-# gate catches obvious non-engine noise but NOT speech/music. Raising the
-# threshold to catch speech would also reject faulty starts. Recalibrate with
-# more faulty-engine + true-negative samples before tightening.
+# 0.04 sits between garbage and the faulty-engine floor. Raising it would
+# reject faulty starts, so sounds that clear it without being an engine are
+# caught by the competing-class check below instead.
 ENGINE_GATE_MIN = float(os.getenv("ENGINE_GATE_MIN", 0.04))
+# Competing sounds: a clip is rejected when any of these groups scores at
+# least as high as the engine-presence classes. Calibrated on the 16 real
+# clips in data/test (all kept; worst case is the faulty crank, engine 0.086
+# vs speech 0.051) and on speech, music, birdsong, whale song, tones, hum and
+# white/pink noise (all rejected, including white noise that scores 0.079 on
+# the engine classes and so passes ENGINE_GATE_MIN on its own). Talking
+# quietly over an idling engine still passes; talking at a similar level to
+# the engine does not.
+COMPETING_CLASSES = {
+    "speech": ["Speech", "Child speech, kid speaking", "Conversation", "Narration, monologue",
+               "Male speech, man speaking", "Female speech, woman speaking"],
+    "music": ["Music", "Musical instrument", "Singing"],
+    "background noise": ["White noise", "Pink noise", "Static"],
+    "animal sounds": ["Animal", "Wild animals", "Bird", "Domestic animals, pets", "Dog", "Cat"],
+}
 # Normal starts score >= ~0.75 on "Engine starting"; steady-state clips peak
 # at ~0.48. 0.5 cleanly separates a cranking transient from a running engine.
 # NOTE: idle vs high-RPM are NOT separable with YAMNet's head, so stage
@@ -115,18 +131,19 @@ def load_models():
     return yamnet_model, svm_model, scaler, label_map
 
 
-def validate_audio(file_path):
+def validate_audio(file_path, expected_stage=None):
     """
     Load the audio file to validate duration and amplitude.
     Returns: dict with keys: is_valid (bool), duration (float), reason (str).
     """
+    min_duration = MIN_DURATION_START if expected_stage == "audio_start" else MIN_DURATION
     try:
         audio, sr = librosa.load(file_path, sr=None)
         duration = float(librosa.get_duration(y=audio, sr=sr))
-        
-        if duration < MIN_DURATION:
+
+        if duration < min_duration:
             return {"is_valid": False, "code": "TOO_SHORT", "duration": duration,
-                    "reason": f"Recording is too short ({duration:.1f}s). Please record at least {MIN_DURATION:.0f}s."}
+                    "reason": f"Recording is too short ({duration:.1f}s). Please record at least {min_duration:g}s."}
 
         if duration > MAX_DURATION:
             return {"is_valid": False, "code": "TOO_LONG", "duration": duration,
@@ -160,6 +177,7 @@ def _get_yamnet_classes(yamnet_model):
             names.append(row[2])  # display_name column
 
     wanted = set(ENGINE_PRESENCE_CLASSES) | set(STAGE_CLASSES.values())
+    wanted |= {c for group in COMPETING_CLASSES.values() for c in group}
     _YAMNET_CLASS_IDX = {name: i for i, name in enumerate(names) if name in wanted}
     return _YAMNET_CLASS_IDX
 
@@ -190,15 +208,26 @@ def check_content(scores_mean, scores_max, expected_stage, class_idx):
     """
     Content validation from YAMNet scores.
       - is_engine (HARD): summed engine-presence classes must clear the gate.
+      - competing sound (HARD): speech, music, noise or animal sounds must not
+        score as high as the engine.
       - stage warning (SOFT): flags an obvious start/steady mismatch only;
         idle vs high-RPM is intentionally NOT distinguished (not separable).
-    Returns: {is_engine, engine_score, warning (str|None), detected}
+    Returns: {is_engine, engine_score, competing (str|None), warning (str|None), detected}
     """
     engine_score = float(sum(
         scores_mean[class_idx[c]] for c in ENGINE_PRESENCE_CLASSES if c in class_idx
     ))
     if engine_score < ENGINE_GATE_MIN:
-        return {"is_engine": False, "engine_score": engine_score,
+        return {"is_engine": False, "engine_score": engine_score, "competing": None,
+                "warning": None, "detected": None}
+
+    competing = {
+        group: float(sum(scores_mean[class_idx[c]] for c in classes if c in class_idx))
+        for group, classes in COMPETING_CLASSES.items()
+    }
+    loudest = max(competing, key=competing.get)
+    if competing[loudest] >= engine_score:
+        return {"is_engine": False, "engine_score": engine_score, "competing": loudest,
                 "warning": None, "detected": None}
 
     start_score = float(scores_max[class_idx[STAGE_CLASSES["audio_start"]]]) \
@@ -222,7 +251,7 @@ def check_content(scores_mean, scores_max, expected_stage, class_idx):
             warning = ("This sounds like an engine start rather than a steady "
                        "idle/acceleration clip. Check you're on the right stage.")
 
-    return {"is_engine": True, "engine_score": engine_score,
+    return {"is_engine": True, "engine_score": engine_score, "competing": None,
             "warning": warning, "detected": detected}
 
 
@@ -289,7 +318,7 @@ def validate_and_analyze_stage(file_path, expected_stage, yamnet_model, svm_mode
       4. Health prediction (reuses the YAMNet embedding from step 2/3).
     Returns a per-stage dict; 'valid' is False if a HARD check failed.
     """
-    val = validate_audio(file_path)
+    val = validate_audio(file_path, expected_stage)
     if not val["is_valid"]:
         return {"valid": False, "code": val["code"], "message": val["reason"]}
 
@@ -300,6 +329,11 @@ def validate_and_analyze_stage(file_path, expected_stage, yamnet_model, svm_mode
 
     class_idx = _get_yamnet_classes(yamnet_model)
     content = check_content(yam["scores_mean"], yam["scores_max"], expected_stage, class_idx)
+    if content["competing"]:
+        return {"valid": False, "code": "OTHER_SOUND", "duration": round(val["duration"], 2),
+                "engine_score": round(content["engine_score"], 3),
+                "message": (f"We could hear {content['competing']} more clearly than the engine. "
+                            "Record again close to the engine, without talking or music nearby.")}
     if not content["is_engine"]:
         return {"valid": False, "code": "NOT_ENGINE", "duration": round(val["duration"], 2),
                 "engine_score": round(content["engine_score"], 3),

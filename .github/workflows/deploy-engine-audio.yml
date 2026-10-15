@@ -6,13 +6,18 @@ on:
     paths:
       - 'component3-engine-audio/**'
       - '.github/workflows/deploy-engine-audio.yml'
+      - '.github/workflows/test-engine-audio.yml'
   workflow_dispatch:
 
 env:
   IMAGE_NAME: watinakama-engine-audio
 
 jobs:
+  test:
+    uses: ./.github/workflows/test-engine-audio.yml
+
   build-and-push:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

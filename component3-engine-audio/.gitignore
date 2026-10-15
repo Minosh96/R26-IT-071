@@ -7,8 +7,12 @@ venv/
 env/
 .venv/
 data/raw/
-data/processed/
-models/saved/
+data/processed/*
+# The label map and the trained model are needed at runtime (Docker image, CI tests)
+!data/processed/embeddings.json
+models/saved/*
+!models/saved/svm_model.joblib
+!models/saved/scaler.joblib
 .ipynb_checkpoints/
 .DS_Store
 Thumbs.db
