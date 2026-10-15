@@ -1,0 +1,37 @@
+name: Test Engine Audio
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'component3-engine-audio/**'
+      - '.github/workflows/test-engine-audio.yml'
+  workflow_call:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: component3-engine-audio
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: |
+            component3-engine-audio/requirements.txt
+            component3-engine-audio/requirements-dev.txt
+
+      # librosa/soundfile need libsndfile + ffmpeg for audio decoding
+      - name: Install system libraries
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libsndfile1 ffmpeg
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run tests
+        run: python -m pytest tests -q

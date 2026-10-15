@@ -98,6 +98,21 @@ def augment_audio(audio, sr):
         return np.roll(audio, shift_amount)
 
 
+def vehicle_id(file_name):
+    """
+    Group key used to keep all recordings of one car on the same side of a split.
+    Generated clips are named "<kind>_<n>__<source stem>.wav", so the source clip
+    is used for them. Field recordings are named "<plate>_<stage>.wav" (for
+    example "CAD 1530_Idle.wav"), so the plate identifies the car; this also
+    keeps the Galaxy A15 and iPhone copies of one recording together.
+    Files with no "_" (for example "Engine knock 1.wav") form their own group.
+    """
+    stem = os.path.splitext(os.path.basename(file_name))[0]
+    if "__" in stem:
+        stem = stem.split("__", 1)[1]
+    return stem.split("_", 1)[0].strip().upper()
+
+
 def load_dataset(yamnet_model, augment=True, data_dir=DATA_DIR):
     """
     Loop through each class folder in data_dir. For each .wav file, 
@@ -107,6 +122,7 @@ def load_dataset(yamnet_model, augment=True, data_dir=DATA_DIR):
     label_map = {class_name: idx for idx, class_name in enumerate(CLASSES)}
     X = []
     y = []
+    groups = []
     
     for class_name in CLASSES:
         class_dir = os.path.join(data_dir, class_name)
@@ -135,6 +151,7 @@ def load_dataset(yamnet_model, augment=True, data_dir=DATA_DIR):
             if embedding is not None:
                 X.append(embedding)
                 y.append(label_map[class_name])
+                groups.append(vehicle_id(wav_file))
                 count_for_class += 1
                 
                 # Augmentation
@@ -145,11 +162,12 @@ def load_dataset(yamnet_model, augment=True, data_dir=DATA_DIR):
                         if aug_embedding is not None:
                             X.append(aug_embedding)
                             y.append(label_map[class_name])
+                            groups.append(vehicle_id(wav_file))
                             count_for_class += 1
                             
         print(f"Finished class '{class_name}': generated {count_for_class} total samples.")
         
-    return np.array(X, dtype=np.float32), np.array(y, dtype=np.int32), label_map
+    return np.array(X, dtype=np.float32), np.array(y, dtype=np.int32), label_map, np.array(groups)
 
 
 def load_test_set(yamnet_model):
@@ -159,7 +177,7 @@ def load_test_set(yamnet_model):
     return load_dataset(yamnet_model, augment=False, data_dir=TEST_DIR)
 
 
-def save_embeddings(X, y, X_test, y_test, label_map, path):
+def save_embeddings(X, y, X_test, y_test, label_map, path, groups=None, groups_test=None):
     """
     Save embeddings to an npz file and the label map to a json file.
     Prints confirmation with shapes.
@@ -167,7 +185,12 @@ def save_embeddings(X, y, X_test, y_test, label_map, path):
     # Create directory if it doesn't exist
     os.makedirs(os.path.dirname(path), exist_ok=True)
     
-    np.savez(path, X=X, y=y, X_test=X_test, y_test=y_test)
+    extra = {}
+    if groups is not None:
+        extra["groups"] = groups
+    if groups_test is not None:
+        extra["groups_test"] = groups_test
+    np.savez(path, X=X, y=y, X_test=X_test, y_test=y_test, **extra)
     
     json_path = str(pathlib.Path(path).with_suffix('.json'))
     with open(json_path, 'w') as f:
@@ -184,10 +207,10 @@ if __name__ == "__main__":
     
     if model is not None:
         print("\nLoading and processing training dataset...")
-        X, y, label_map = load_dataset(model, augment=True)
+        X, y, label_map, groups = load_dataset(model, augment=True)
         
         print("\nLoading and processing test dataset...")
-        X_test, y_test, label_map_test = load_test_set(model)
+        X_test, y_test, label_map_test, groups_test = load_test_set(model)
         
         print("\n--- Array Shapes ---")
         print(f"X: {X.shape}")
@@ -205,7 +228,8 @@ if __name__ == "__main__":
             print("Training set is empty.")
             
         print("\nSaving dataset...")
-        save_embeddings(X, y, X_test, y_test, label_map, EMBEDDINGS_SAVE_PATH)
+        print(f"Vehicles / source clips in training set: {len(set(groups))}")
+        save_embeddings(X, y, X_test, y_test, label_map, EMBEDDINGS_SAVE_PATH, groups, groups_test)
         print("Dataset pipeline complete")
     else:
         print("Pipeline aborted due to YAMNet loading failure.")

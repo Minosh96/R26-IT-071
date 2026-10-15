@@ -52,13 +52,21 @@ python preprocessing/dataset_loader.py
 This will generate `data/processed/embeddings.json` and `embeddings.npy`.
 
 ### 3. Train the Classifier
-Train the SVM model using the extracted features:
+Train the SVM model using the extracted features. Accuracy is measured with 5-fold cross-validation that keeps every recording of one car (and its augmented copies) in the same fold, then the final model is trained on all the data:
 ```bash
 python models/train_svm.py
 ```
 Models will be saved in `models/saved/`.
 
-### 4. Run Inference (Prediction)
+### 4. Run the Tests
+The API tests send real clips from `data/test` through the full pipeline (YAMNet is downloaded on first run):
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests -q
+```
+They also run in GitHub Actions on every pull request to `main`, and a merge to `main` is only deployed if they pass.
+
+### 5. Run Inference (Prediction)
 To test the system on a single audio file:
 ```bash
 python inference/predict.py path/to/your/audio.wav
