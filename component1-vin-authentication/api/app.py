@@ -41,6 +41,20 @@ async def predict(file: UploadFile = File(...)):
         contents = await file.read()
         prediction = predict_vin(contents)
 
+        if prediction.get("not_vin"):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "message": (
+                        "This doesn't look like a VIN or chassis number. Take a clear, close photo of "
+                        "the number stamped on the car, filling the frame."
+                    ),
+                    "code": "NOT_VIN",
+                    "vin_score": prediction["vin_score"],
+                    "status": "error",
+                },
+            )
+
         if prediction.get("invalid_image"):
             return JSONResponse(
                 status_code=400,
@@ -52,10 +66,11 @@ async def predict(file: UploadFile = File(...)):
 
         return {
             "filename": file.filename,
-    "label": prediction["label"],
-    "confidence": prediction["confidence"],
-    "status": "success"
-    }
+            "label": prediction["label"],
+            "confidence": prediction["confidence"],
+            "vin_score": prediction["vin_score"],
+            "status": "success",
+        }
     except Exception as e:
         return JSONResponse(
             status_code=500,

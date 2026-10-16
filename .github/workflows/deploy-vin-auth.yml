@@ -6,13 +6,18 @@ on:
     paths:
       - 'component1-vin-authentication/**'
       - '.github/workflows/deploy-vin-auth.yml'
+      - '.github/workflows/test-vin-auth.yml'
   workflow_dispatch:
 
 env:
   IMAGE_NAME: watinakama-vin-auth
 
 jobs:
+  test:
+    uses: ./.github/workflows/test-vin-auth.yml
+
   build-and-push:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
