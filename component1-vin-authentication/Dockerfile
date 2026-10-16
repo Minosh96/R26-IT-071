@@ -11,6 +11,10 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Bake in the ImageNet MobileNetV2 weights used by the "is this a VIN?" check,
+# so the container doesn't download them on its first request.
+RUN python -c "import tensorflow as tf; tf.keras.applications.MobileNetV2(include_top=False, weights='imagenet', pooling='avg', input_shape=(224, 224, 3))"
+
 COPY . .
 
 EXPOSE 8000
