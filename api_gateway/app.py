@@ -1,8 +1,13 @@
 import os
 
 import httpx
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
+
+# Load api_gateway/.env (if present) so backend URLs/tokens work locally.
+# Real environment variables (e.g. Azure App Settings) still take precedence.
+load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 
 app = FastAPI(title="Watinakama API Gateway")
 

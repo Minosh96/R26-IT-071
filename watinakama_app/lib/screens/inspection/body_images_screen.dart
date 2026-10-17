@@ -107,8 +107,8 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
     // Validate view in background
     await _validateCurrentView(_currentAngle, croppedPath);
 
-    // Auto-advance to next empty slot if view passed
-    if (mounted && _viewValid[_currentAngle] != false && !_allCaptured) {
+    // Auto-advance to next empty slot only if view was verified as correct
+    if (mounted && _viewValid[_currentAngle] == true && !_allCaptured) {
       for (int i = 0; i < 5; i++) {
         if (_capturedPaths[i] == null) {
           setState(() => _currentAngle = i);
@@ -142,37 +142,39 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
     
     if (!mounted) return;
 
-    // A validator error (network failure, 503 model-not-loaded, etc.) is an
-    // infrastructure problem — NOT evidence the photo is the wrong view. Fail
-    // OPEN so a correctly-uploaded image isn't rejected and Next isn't blocked.
-    // Genuine wrong-view verdicts (a 200 response) are still handled below.
     if (result['status'] == 'error') {
       setState(() {
         _viewValidating[index] = false;
-        _viewValid[index]      = true;   // allow through
-        _viewMessage[index]    = null;
+        _viewValid[index]      = false;
+        _capturedPaths[index]  = null; // Discard unverified image
+        _viewMessage[index]    = 'Connection error verifying view. Please ensure the backend is running.';
       });
       ToastService.show(
         context,
-        'View check unavailable — your photo was allowed through.',
+        'Cannot reach view validator service. Please check your network connection.',
+        isError: true,
       );
       return;
     }
 
+    final isValid   = result['valid']   as bool? ?? false;
+    final isCorrect = result['correct'] as bool? ?? false;
+
     setState(() {
       _viewValidating[index] = false;
-      final isCorrect   = result['correct']   as bool? ?? true;
-      final isUncertain = result['uncertain'] as bool? ?? false;
-      _viewValid[index]   = isCorrect || isUncertain;
-      _viewMessage[index] = result['message'] as String?;
+      _viewValid[index]      = isValid && isCorrect;
+      _viewMessage[index]    = result['message'] as String?;
+      if (_viewValid[index] == false) {
+        _capturedPaths[index] = null; // Discard invalid photo so user must retake
+      }
     });
 
     if (mounted && _viewValid[index] == false) {
-      final predicted = result['predicted'] as String? ?? 'unknown';
+      final msg = result['message'] as String? ??
+          'This does not match the ${_kAngleNames[index]} view. Please upload the correct angle.';
       ToastService.show(
         context,
-        '⚠️ This looks like a $predicted view.\n'
-        'Please upload the ${_kAngleNames[index]} view image.',
+        msg,
         isError: true,
       );
     }
@@ -196,10 +198,15 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
       return;
     }
 
-    final images =
-        _capturedPaths.where((p) => p != null).map((p) => File(p!)).toList();
+    // Still verifying one of the images? Wait for the verdict first.
+    if (_viewValidating.any((v) => v)) {
+      ToastService.show(context, 'Please wait — still verifying the view...');
+      return;
+    }
 
-    if (images.isEmpty) {
+    final capturedCount = _capturedPaths.where((p) => p != null).length;
+
+    if (capturedCount == 0) {
       Navigator.pushNamed(context, '/inspection/vin', arguments: {
         ..._vehicleData,
         'body_score': null,
@@ -208,6 +215,25 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
       });
       return;
     }
+
+    // The backend needs all 5 views, and images are mapped to view fields by
+    // position — sending a partial set would shift them into the wrong slots.
+    if (capturedCount < 5) {
+      final missing = <String>[
+        for (int i = 0; i < 5; i++)
+          if (_capturedPaths[i] == null) _kAngleNames[i],
+      ];
+      final firstMissing = _capturedPaths.indexWhere((p) => p == null);
+      setState(() => _currentAngle = firstMissing);
+      ToastService.show(
+        context,
+        'Please capture all 5 views. Missing: ${missing.join(', ')}',
+        isError: true,
+      );
+      return;
+    }
+
+    final images = _capturedPaths.map((p) => File(p!)).toList();
 
     setState(() => _isAnalyzing = true);
     final result = await _apiService.analyzeBody(images);

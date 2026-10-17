@@ -189,28 +189,37 @@ def validate_view(
     all_probs = {label: round(float(probs[i]) * 100, 2)
                  for i, label in enumerate(VIEW_LABELS)}
 
-    if is_correct:
+    if is_correct and not is_uncertain:
         message = (
-            f"✅ Correct view detected: {predicted_label} "
+            f"Correct view detected: {predicted_label} "
             f"({confidence:.1f}% confidence)."
         )
+        is_valid = True
+    elif is_correct and is_uncertain:
+        message = (
+            f"Low confidence ({confidence:.1f}%). "
+            f"This looks like {predicted_label}, but the angle is unclear. "
+            f"Please ensure the vehicle is clearly framed."
+        )
+        is_valid = True
     elif is_uncertain:
         message = (
-            f"⚠️ View is unclear (confidence: {confidence:.1f}%). "
-            f"This looks most like a {predicted_label} view, but you requested "
-            f"{expected_label}. Please ensure the image clearly shows the "
-            f"{expected_label} of the vehicle."
+            f"View is unclear (confidence: {confidence:.1f}%). "
+            f"This does not clearly match the {expected_label} view. "
+            f"Please ensure the image clearly shows the {expected_label} of the vehicle."
         )
+        is_valid = False
     else:
         message = (
-            f"❌ Incorrect view detected! This image appears to be a "
+            f"Incorrect view detected! This image appears to be a "
             f"{predicted_label} view ({confidence:.1f}% confidence), "
             f"but you uploaded it as the {expected_label} view. "
             f"Please upload the correct {expected_label} image."
         )
+        is_valid = False
 
     return {
-        "valid":       is_correct or is_uncertain,   # uncertain = soft-pass
+        "valid":       is_valid,
         "correct":     is_correct,
         "predicted":   predicted_label,
         "expected":    expected_label,

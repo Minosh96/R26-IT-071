@@ -381,54 +381,45 @@ def predict_body_condition(models, views, conf_threshold=0.25):
                 validation_result = validate_view(view_model, contents, normalized_view)
                 view_validation[normalized_view] = validation_result
 
-                if not validation_result["correct"]:
+                if not validation_result.get("valid", True):
                     view_is_valid = False
-                    # Only block if model is confident it's the wrong view
-                    if not validation_result["uncertain"]:
-                        view_errors.append({
-                            "view":     normalized_view,
-                            "expected": validation_result["expected"],
-                            "detected": validation_result["predicted"],
-                            "confidence": validation_result["confidence"],
-                            "message":  validation_result["message"],
-                        })
-                        print(
-                            f"[VIEW VALIDATION] ❌ {normalized_view.upper()}: "
-                            f"Expected '{validation_result['expected']}', "
-                            f"detected '{validation_result['predicted']}' "
-                            f"({validation_result['confidence']:.1f}%). Skipping damage analysis."
-                        )
-                        # Add a placeholder in view_analysis so frontend knows this view had an error
-                        view_analysis[normalized_view] = {
-                            "status": "invalid_view",
-                            "view_validation": validation_result,
-                            "error": validation_result["message"],
-                            "damage_type": None,
-                            "body_part": None,
-                            "confidence": 0.0,
-                            "part_confidence": 0.0,
-                            "category": None,
-                            "score": 0.0,
-                            "penalty": 0.0,
-                            "visual_url": None,
-                            "damages": [],
-                        }
-                        continue  # Skip damage analysis for this view
-                    else:
-                        # Uncertain – log a warning but continue
-                        print(
-                            f"[VIEW VALIDATION] ⚠️  {normalized_view.upper()}: "
-                            f"Uncertain – looks like '{validation_result['predicted']}' "
-                            f"({validation_result['confidence']:.1f}%). Proceeding with caution."
-                        )
+                    view_errors.append({
+                        "view":     normalized_view,
+                        "expected": validation_result["expected"],
+                        "detected": validation_result["predicted"],
+                        "confidence": validation_result["confidence"],
+                        "message":  validation_result["message"],
+                    })
+                    print(
+                        f"[VIEW VALIDATION] [FAIL] {normalized_view.upper()}: "
+                        f"Expected '{validation_result['expected']}', "
+                        f"detected '{validation_result['predicted']}' "
+                        f"({validation_result['confidence']:.1f}%). Skipping damage analysis."
+                    )
+                    # Add a placeholder in view_analysis so frontend knows this view had an error
+                    view_analysis[normalized_view] = {
+                        "status": "invalid_view",
+                        "view_validation": validation_result,
+                        "error": validation_result["message"],
+                        "damage_type": None,
+                        "body_part": None,
+                        "confidence": 0.0,
+                        "part_confidence": 0.0,
+                        "category": None,
+                        "score": 0.0,
+                        "penalty": 0.0,
+                        "visual_url": None,
+                        "damages": [],
+                    }
+                    continue  # Skip damage analysis for this view
                 else:
                     print(
-                        f"[VIEW VALIDATION] ✅ {normalized_view.upper()}: "
+                        f"[VIEW VALIDATION] [OK] {normalized_view.upper()}: "
                         f"'{validation_result['predicted']}' confirmed "
                         f"({validation_result['confidence']:.1f}%)."
                     )
             except Exception as ve:
-                print(f"[VIEW VALIDATION] Warning – could not validate '{normalized_view}': {ve}")
+                print(f"[VIEW VALIDATION] Warning - could not validate '{normalized_view}': {ve}")
                 view_is_valid = True   # fallback: allow the image through
 
         # Save uploaded copy
