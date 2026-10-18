@@ -17,6 +17,11 @@ class ResultsScreen extends StatefulWidget {
   State<ResultsScreen> createState() => _ResultsScreenState();
 }
 
+const String _vinIssueMessage =
+    "There is an issue with this vehicle's VIN number. Please check this vehicle further before buying.";
+const String _vinIssueAdvice =
+    "Compare the VIN with the registration book, or ask the RMV or a trusted mechanic to verify it.";
+
 class _ResultsScreenState extends State<ResultsScreen> {
   Map<String, dynamic> _vehicleData = {};
   Map<String, dynamic> _valuationResult = {};
@@ -149,6 +154,12 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
         _verdict = result['verdict'] ?? 'FAIR_PRICE';
         _explanation = result['verdict_message'] ?? result['explanation'] ?? '';
+        // Altered VIN: always show the friendly wording, even if an older
+        // valuation service still answers DO_NOT_BUY / "Do not purchase".
+        if (_verdict == 'DO_NOT_BUY' || _verdict == 'CHECK_VIN') {
+          _verdict = 'CHECK_VIN';
+          _explanation = _vinIssueMessage;
+        }
         _isLoading = false;
         _valuationResult = result;
       });
@@ -242,7 +253,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
                     const SizedBox(height: 16),
                     if (_hasError) _buildValuationErrorCard() else _buildFairValueCard(),
                     const SizedBox(height: 16),
-                    if (!_hasError) ...[
+                    // No price breakdown when the VIN blocks the valuation
+                    if (!_hasError && _verdict != 'CHECK_VIN') ...[
                       _buildDepreciationFactorsCard(),
                       const SizedBox(height: 16),
                     ],
@@ -451,21 +463,17 @@ class _ResultsScreenState extends State<ResultsScreen> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
-            Text(
-              _explanation.isNotEmpty
-                  ? _explanation
-                  : "There is an issue with this vehicle's VIN number. Please check this vehicle further before buying.",
-              style: const TextStyle(color: AppColors.textWhite, fontSize: 14),
+            const Text(
+              _vinIssueMessage,
+              style: TextStyle(color: AppColors.textWhite, fontSize: 14),
               textAlign: TextAlign.center,
             ),
-            if (_valuationResult['explanation'] != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                _valuationResult['explanation'],
-                style: const TextStyle(color: AppColors.textGray, fontSize: 12),
-                textAlign: TextAlign.center,
-              ),
-            ],
+            const SizedBox(height: 8),
+            const Text(
+              _vinIssueAdvice,
+              style: TextStyle(color: AppColors.textGray, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
             const SizedBox(height: 16),
             _buildVerdictChip(),
           ],
