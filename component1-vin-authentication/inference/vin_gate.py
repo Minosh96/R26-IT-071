@@ -16,14 +16,27 @@ to the 5 closest training images. Calibrated with tools/build_vin_reference.py:
   pages of ordinary text (12)                                     up to 0.60
 
 The threshold sits between the two groups and can be changed with VIN_GATE_MIN.
+
+When the app has already read a VIN- or chassis-shaped number in the photo with
+on-device OCR (sent as detected_number), a lower threshold applies. Painted
+plates and photos with more of the car around the number score lower: a real
+red-painted Suzuki VIN scored 0.585. Car body photos stay below 0.50, and
+wallpapers or text pages do not contain a number of that shape.
 """
 import os
+import re
 
 import cv2
 import numpy as np
 
 REFERENCE_PATH = "models/vin_reference_embeddings.npy"
 VIN_GATE_MIN = float(os.getenv("VIN_GATE_MIN", 0.63))
+VIN_GATE_MIN_WITH_NUMBER = float(os.getenv("VIN_GATE_MIN_WITH_NUMBER", 0.50))
+
+# Stricter than the app's patterns, so a number plate such as CAD-1530 does not count.
+_VIN = re.compile(r"[A-HJ-NPR-Z0-9]{17}")
+_CHASSIS = re.compile(r"[A-Z0-9]{2,7}-[0-9]{6,8}")
+_STAMPED = re.compile(r"(?=[A-Z0-9]*[A-Z])(?=[A-Z0-9]*[0-9])[A-Z0-9]{10,17}")
 TOP_K = 5
 
 _extractor = None
@@ -57,6 +70,16 @@ def vin_likeness(img_bgr):
     return float(np.sort(similarities)[-TOP_K:].mean())
 
 
-def looks_like_vin(img_bgr):
+def is_vehicle_number(text):
+    """True for a VIN, a chassis number or a long stamped number read by OCR."""
+    text = (text or "").upper().strip()
+    compact = re.sub(r"\s+", "", text)
+    if _VIN.fullmatch(compact) and re.search(r"[A-Z]", compact) and re.search(r"[0-9]", compact):
+        return True
+    return bool(_CHASSIS.fullmatch(re.sub(r"\s*-\s*", "-", text)) or _STAMPED.fullmatch(compact))
+
+
+def looks_like_vin(img_bgr, detected_number=None):
     score = vin_likeness(img_bgr)
-    return score >= VIN_GATE_MIN, score
+    threshold = VIN_GATE_MIN_WITH_NUMBER if is_vehicle_number(detected_number) else VIN_GATE_MIN
+    return score >= threshold, score

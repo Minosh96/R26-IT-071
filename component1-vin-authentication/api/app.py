@@ -1,6 +1,6 @@
 import pathlib
 
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, Form, UploadFile
 from fastapi.responses import JSONResponse
 import uvicorn
 from inference.predict import predict_vin
@@ -20,7 +20,7 @@ async def health_check_v1():
 
 
 @app.post("/predict")
-async def predict(file: UploadFile = File(...)):
+async def predict(file: UploadFile = File(...), detected_number: str | None = Form(None)):
     """
     Endpoint to upload a VIN image and get a prediction.
     """
@@ -39,7 +39,7 @@ async def predict(file: UploadFile = File(...)):
 
     try:
         contents = await file.read()
-        prediction = predict_vin(contents)
+        prediction = predict_vin(contents, detected_number)
 
         if prediction.get("not_vin"):
             return JSONResponse(

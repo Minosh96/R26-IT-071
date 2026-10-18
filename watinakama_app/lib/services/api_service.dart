@@ -190,7 +190,9 @@ class ApiService {
   }
 
   /// Scans VIN from an image file.
-  Future<Map<String, dynamic>> scanVin(File vinImage) async {
+  /// [detectedNumber] is the VIN or chassis number read on the phone; the server
+  /// uses it to accept painted or loosely framed plates.
+  Future<Map<String, dynamic>> scanVin(File vinImage, {String? detectedNumber}) async {
     try {
       var request =
           http.MultipartRequest('POST', Uri.parse('${ApiConfig.vinApi}/predict'));
@@ -198,6 +200,7 @@ class ApiService {
       request.files.add(
         await http.MultipartFile.fromPath('file', vinImage.path),
       );
+      if (detectedNumber != null) request.fields['detected_number'] = detectedNumber;
 
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
