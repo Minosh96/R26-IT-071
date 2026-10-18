@@ -323,6 +323,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Older inspections were saved as DO_NOT_BUY; show the friendly label for both.
+  String _verdictLabel(String verdict) =>
+      (verdict == 'DO_NOT_BUY' || verdict == 'CHECK_VIN') ? 'CHECK VIN' : verdict.replaceAll('_', ' ');
+
   Color _verdictColor(String verdict) {
     if (verdict == 'CHECK_VIN' || verdict == 'DO_NOT_BUY') return AppColors.statusAmber;
     if (verdict == 'OVERPRICED') return AppColors.statusRed;
@@ -375,7 +379,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 4),
                   if (record.verdict.isNotEmpty)
                     Text(
-                      record.verdict.replaceAll('_', ' '),
+                      _verdictLabel(record.verdict),
                       style: TextStyle(color: verdictColor, fontSize: 11, fontWeight: FontWeight.w600),
                     ),
                 ],
@@ -422,7 +426,7 @@ class _HomeScreenState extends State<HomeScreen> {
           _detailRow("Body Condition", "${record.bodyConditionScore.toInt()}%"),
           _detailRow("Engine Condition", "${record.engineConditionScore.toInt()}%"),
           if (record.verdict.isNotEmpty)
-            _detailRow("Verdict", record.verdict.replaceAll('_', ' ')),
+            _detailRow("Verdict", _verdictLabel(record.verdict)),
         ],
       ),
       ctaLabel: 'Close',
