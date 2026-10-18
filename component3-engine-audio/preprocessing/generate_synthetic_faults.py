@@ -194,28 +194,28 @@ def generate_fault_dataset():
             if counts["misfiring"] < SAMPLES_PER_CLASS:
                 fault_audio = simulate_misfiring(audio, sr)
                 final_audio = apply_random_augmentation(fault_audio, sr)
-                out_name = f"misfiring_synthetic_{counts['misfiring']+1:03d}.wav"
+                out_name = f"misfiring_synthetic_{counts['misfiring']+1:03d}__{healthy_file.stem}.wav"
                 sf.write(Path(OUTPUT_BASE) / "misfiring" / out_name, final_audio, sr)
                 counts["misfiring"] += 1
                 
             if counts["tappet"] < SAMPLES_PER_CLASS:
                 fault_audio = simulate_tappet(audio, sr)
                 final_audio = apply_random_augmentation(fault_audio, sr)
-                out_name = f"tappet_synthetic_{counts['tappet']+1:03d}.wav"
+                out_name = f"tappet_synthetic_{counts['tappet']+1:03d}__{healthy_file.stem}.wav"
                 sf.write(Path(OUTPUT_BASE) / "tappet" / out_name, final_audio, sr)
                 counts["tappet"] += 1
 
             if counts["rotational_imbalance"] < SAMPLES_PER_CLASS:
                 fault_audio = simulate_rotational_imbalance(audio, sr)
                 final_audio = apply_random_augmentation(fault_audio, sr)
-                out_name = f"rotational_imbalance_synthetic_{counts['rotational_imbalance']+1:03d}.wav"
+                out_name = f"rotational_imbalance_synthetic_{counts['rotational_imbalance']+1:03d}__{healthy_file.stem}.wav"
                 sf.write(Path(OUTPUT_BASE) / "rotational_imbalance" / out_name, final_audio, sr)
                 counts["rotational_imbalance"] += 1
 
             if counts["knocking"] < knocking_needed:
                 fault_audio = simulate_knocking(audio, sr, real_knocking_files=existing_real)
                 final_audio = apply_random_augmentation(fault_audio, sr)
-                out_name = f"knocking_synthetic_{counts['knocking']+1:03d}.wav"
+                out_name = f"knocking_synthetic_{counts['knocking']+1:03d}__{healthy_file.stem}.wav"
                 sf.write(Path(OUTPUT_BASE) / "knocking" / out_name, final_audio, sr)
                 counts["knocking"] += 1
                 

@@ -17,7 +17,10 @@ from inference.predict import predict_body_condition, load_models
 app = FastAPI(
     title="Vehicle Body Condition Analysis API",
     description=(
-        "Automated physical vehicle inspection using two specialist deep-learning models:\n\n"
+        "Automated physical vehicle inspection using three specialist deep-learning models:\n\n"
+        "- **View Validator** – MobileNetV3Small trained on `vehicle_view_weights.weights.h5`\n"
+        "  Identifies which of the 5 vehicle views (Front/Rear/Left/Right/Roof) is shown.\n"
+        "  Rejects images uploaded to the wrong view slot before running damage analysis.\n\n"
         "- **Damage Classifier** – MobileNetV3Small trained on `damage_capped_model.weights.h5`\n"
         "  Detects damage type: *Dent*, *Rust*, *Scratch*, or *Undamaged*.\n\n"
         "- **Body Part Classifier** – EfficientNetV2B0 trained on `part_only_model.weights.h5`\n"
@@ -25,7 +28,7 @@ app = FastAPI(
         "Upload 5 vehicle images (front, rear, left, right, roof) to receive a full Body "
         "Condition Score (0–100) with per-view damage breakdowns."
     ),
-    version="5.0.0",
+    version="6.0.0",
     contact={
         "name": "Watinakama.LK Research Project",
         "url": "https://github.com/R26-IT-071",
@@ -59,13 +62,14 @@ def _load_models_sync():
     global BODY_MODELS, _MODELS_LOADING
     _MODELS_LOADING = True
     print("\n==========================================")
-    print("STARTING VEHICLE BODY CONDITION API v5.0.0")
+    print("STARTING VEHICLE BODY CONDITION API v6.0.0")
+    print("View Validator: MobileNetV3Small  (vehicle_view_weights.weights.h5)")
     print("Damage model  : MobileNetV3Small  (damage_capped_model_full.keras)")
     print("Part model    : EfficientNetV2B0  (part_only_model_full.keras)")
     print("==========================================")
     try:
         BODY_MODELS = load_models()
-        print("[OK] Both models loaded successfully.")
+        print("[OK] All 3 models loaded successfully.")
     except Exception as e:
         print(f"[ERROR] Failed to load models: {str(e)}")
         BODY_MODELS = {}
@@ -98,12 +102,14 @@ def health_check():
     """Returns the current service status and confirms which models are loaded."""
     damage_ok = "damage_model" in BODY_MODELS and BODY_MODELS["damage_model"] is not None
     part_ok   = "part_model"   in BODY_MODELS and BODY_MODELS["part_model"]   is not None
-    status = "ok" if (damage_ok and part_ok) else ("loading" if _MODELS_LOADING else "degraded")
+    view_ok   = "view_model"   in BODY_MODELS and BODY_MODELS["view_model"]   is not None
+    status = "ok" if (damage_ok and part_ok and view_ok) else ("loading" if _MODELS_LOADING else "degraded")
     return {
         "status": status,
         "service": "body-condition-api",
-        "version": "5.0.0",
+        "version": "6.0.0",
         "models": {
+            "view_validator_loaded": view_ok,
             "damage_classifier_loaded": damage_ok,
             "part_classifier_loaded": part_ok,
             "models_loading": _MODELS_LOADING,
@@ -138,6 +144,49 @@ async def handle_analysis(front, rear, left, right, roof_or_up):
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+
+# ─── Per-image view validation endpoint ──────────────────────────────────────
+
+@app.post(
+    "/api/v1/validate-view",
+    tags=["View Validation"],
+    summary="Validate a single vehicle view image",
+    response_description="View validation result",
+)
+async def validate_single_view(
+    image: UploadFile = File(..., description="The vehicle image to validate"),
+    expected_view: str = "front",      # query param: front|rear|left|right|roof
+):
+    """
+    Checks whether *image* actually shows the requested vehicle view.
+
+    Call this endpoint **before** submitting to /analyze to provide instant
+    feedback when a user uploads the wrong photo.
+
+    **expected_view** must be one of: `front`, `rear`, `left`, `right`, `roof`
+
+    **Response includes:**
+    - `valid`       – True if the image matches the expected view
+    - `predicted`   – Which view the model thinks this image shows
+    - `confidence`  – Confidence percentage
+    - `message`     – Human-readable verdict
+    """
+    view_model = BODY_MODELS.get("view_model")
+    if view_model is None:
+        raise HTTPException(
+            status_code=503,
+            detail="View validator model not loaded. Check /health.",
+        )
+    try:
+        image_bytes = await image.read()
+        from inference.view_validator import validate_view
+        result = validate_view(view_model, image_bytes, expected_view)
+        return JSONResponse(content=result)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Validation failed: {str(e)}")
 
 
 # ─── Endpoints ────────────────────────────────────────────────────────────────

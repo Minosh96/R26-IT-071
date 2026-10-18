@@ -12,6 +12,8 @@ import '../../widgets/loading_overlay.dart';
 import '../../widgets/custom_toast.dart';
 import '../../widgets/result_sheet.dart';
 import '../../widgets/nav_button_row.dart';
+import '../../utils/file_validation.dart';
+import '../../utils/vehicle_number.dart';
 
 class VinScanScreen extends StatefulWidget {
   const VinScanScreen({super.key});
@@ -26,7 +28,9 @@ class _VinScanScreenState extends State<VinScanScreen> {
 
   bool _isAnalyzing = false;
   bool _flashOn = false;
+  /// The VIN, chassis or engine number read from the photo on the phone.
   String? _scannedValue;
+  bool _isReadingNumber = false;
   String? _capturedImagePath;
   String? _profilePicPath;
   final ApiService _apiService = ApiService();
@@ -70,17 +74,70 @@ class _VinScanScreenState extends State<VinScanScreen> {
     });
   }
 
-  Future<void> _captureFromGallery() async {
-    final picker = ImagePicker();
-    final photo = await picker.pickImage(source: ImageSource.gallery);
-    if (photo != null) {
-      final croppedPath = await _cropImage(photo.path);
-      if (croppedPath == null || !mounted) return;
-      setState(() {
-        _capturedImagePath = croppedPath;
-        _scannedValue = "MANUAL_UPLOAD";
-      });
+  Future<void> _captureFromGallery() => _pickPhoto(ImageSource.gallery);
+
+  Future<void> _captureFromCamera() => _pickPhoto(ImageSource.camera);
+
+  /// Takes or picks a photo, lets the user crop it to the number, and keeps it
+  /// only if the text in it contains a VIN, chassis or engine number.
+  Future<void> _pickPhoto(ImageSource source) async {
+    await _scannerController.stop(); // free the camera for the photo
+    final photo = await ImagePicker().pickImage(source: source);
+    if (photo == null) {
+      _restartPreview();
+      return;
     }
+
+    final validationError = validateFileExtension(
+      photo.path,
+      allowedImageExtensions,
+      'JPG, PNG, WEBP, or HEIC image',
+    );
+    if (validationError != null) {
+      if (!mounted) return;
+      ToastService.show(context, validationError, isError: true);
+      _restartPreview();
+      return;
+    }
+
+    final croppedPath = await _cropImage(photo.path);
+    if (croppedPath == null || !mounted) {
+      _restartPreview();
+      return;
+    }
+
+    setState(() => _isReadingNumber = true);
+    final number = await findVehicleNumberInImage(croppedPath);
+    if (!mounted) return;
+    setState(() => _isReadingNumber = false);
+
+    if (number == null) {
+      ToastService.show(
+        context,
+        "No VIN, chassis or engine number found in this photo. Take a close, clear photo of the number stamped on the car.",
+        isError: true,
+      );
+      _restartPreview();
+      return;
+    }
+
+    setState(() {
+      _capturedImagePath = croppedPath;
+      _scannedValue = number;
+    });
+  }
+
+  /// Drops the current photo and goes back to the live camera preview.
+  void _retake() {
+    setState(() {
+      _capturedImagePath = null;
+      _scannedValue = null;
+    });
+    _restartPreview();
+  }
+
+  void _restartPreview() {
+    if (mounted && _capturedImagePath == null) _scannerController.start();
   }
 
   Future<String?> _cropImage(String sourcePath) async {
@@ -134,6 +191,8 @@ class _VinScanScreenState extends State<VinScanScreen> {
       String msg = result['message'] ?? 'VIN analysis failed.';
       if (result['status_code'] == 503) msg = "VIN models are still loading or missing. Please wait a moment.";
       ToastService.show(context, msg, isError: true);
+      // 422: the server decided the photo isn't a VIN plate, so ask for a new one.
+      if (result['status_code'] == 422) _retake();
     } else {
       _showVinResult(result);
     }
@@ -264,14 +323,7 @@ class _VinScanScreenState extends State<VinScanScreen> {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          TextSpan(text: " or "),
-                          TextSpan(
-                            text: "Engine Number",
-                            style: TextStyle(
-                              color: Color(0xFFFF8C00),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+
                           TextSpan(
                             text: " within the frame to scan automatically.",
                           ),
@@ -304,15 +356,25 @@ class _VinScanScreenState extends State<VinScanScreen> {
                               borderRadius: BorderRadius.circular(16),
                               child: MobileScanner(
                                 controller: _scannerController,
-                                onDetect: (capture) {
-                                  final List<Barcode> barcodes = capture.barcodes;
-                                  if (barcodes.isNotEmpty && barcodes.first.rawValue != null) {
-                                    setState(() {
-                                      _scannedValue = barcodes.first.rawValue;
-                                    });
-                                    _scannerController.stop();
-                                  }
-                                },
+                                // Live viewfinder only: the number is read from the
+                                // photo taken with the shutter button.
+                                onDetect: (_) {},
+                              ),
+                            ),
+                          if (_capturedImagePath != null)
+                            Positioned(
+                              top: 10,
+                              left: 10,
+                              child: GestureDetector(
+                                onTap: _retake,
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(Icons.close, color: Colors.white, size: 18),
+                                ),
                               ),
                             ),
                           if (_capturedImagePath != null)
@@ -366,7 +428,11 @@ class _VinScanScreenState extends State<VinScanScreen> {
                                 ),
                                 const SizedBox(width: 6),
                                 Text(
-                                  _scannedValue == null ? "SCANNING..." : "DETECTED",
+                                  _isReadingNumber
+                                      ? "READING NUMBER..."
+                                      : _scannedValue == null
+                                          ? "TAP THE CAMERA TO PHOTOGRAPH THE NUMBER"
+                                          : "FOUND: $_scannedValue",
                                   style: TextStyle(
                                     color: _scannedValue == null ? Colors.white : AppColors.statusGreen,
                                     fontSize: 12,
@@ -447,9 +513,13 @@ class _VinScanScreenState extends State<VinScanScreen> {
                         ),
                         GestureDetector(
                           onTap: () {
-                            // Trigger analyze if something is detected/captured
-                            if (_scannedValue != null || _capturedImagePath != null) {
+                            // First tap takes the photo; once a number has been
+                            // found in it, the next tap sends it for analysis.
+                            if (_isReadingNumber || _isAnalyzing) return;
+                            if (_capturedImagePath != null) {
                               _handleAnalyze();
+                            } else {
+                              _captureFromCamera();
                             }
                           },
                           child: Container(

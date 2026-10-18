@@ -1,23 +1,24 @@
-# Runs the app on a phone and points it at the backends on this PC.
+# Runs the app on a phone against the API gateway running on THIS PC
+# (instead of the deployed Azure gateway, which is the app's default).
 #
-# Usage (from the watinakama_app folder):
+# Start the 4 backends and the gateway first (see RUNNING.md), then from the watinakama_app folder:
 #   powershell -ExecutionPolicy Bypass -File run_on_phone.ps1        # phone on the same Wi-Fi as the PC
 #   powershell -ExecutionPolicy Bypass -File run_on_phone.ps1 -Usb   # phone plugged in by USB: works on any Wi-Fi
 # Extra flutter arguments are passed through, e.g. -d <device-id>
 
 param([switch]$Usb)
 
-$ports = 8000, 8080, 5003, 5004
+$gatewayPort = 9000
 
 if ($Usb) {
-    # Forward the phone's localhost ports to this PC through the USB cable,
+    # Forward the phone's localhost:9000 to this PC through the USB cable,
     # so the app can use 127.0.0.1 no matter which Wi-Fi either device is on.
     $adb = Join-Path $env:LOCALAPPDATA "Android\Sdk\platform-tools\adb.exe"
     if (-not (Test-Path $adb)) { $adb = (Get-Command adb -ErrorAction SilentlyContinue).Source }
     if (-not $adb) { Write-Host "adb not found. Install Android platform-tools." -ForegroundColor Red; exit 1 }
-    foreach ($p in $ports) { & $adb reverse "tcp:$p" "tcp:$p" | Out-Null }
-    Write-Host "USB mode: phone ports $($ports -join ', ') forwarded to this PC" -ForegroundColor Green
-    flutter run --dart-define=API_HOST=127.0.0.1 @args
+    & $adb reverse "tcp:$gatewayPort" "tcp:$gatewayPort" | Out-Null
+    Write-Host "USB mode: phone port $gatewayPort forwarded to this PC's gateway" -ForegroundColor Green
+    flutter run --dart-define=GATEWAY_BASE_URL=http://127.0.0.1:$gatewayPort @args
     exit $LASTEXITCODE
 }
 
@@ -32,7 +33,7 @@ if (-not $ip) {
 }
 
 $network = (Get-NetConnectionProfile -InterfaceAlias 'Wi-Fi*' -ErrorAction SilentlyContinue | Select-Object -First 1).Name
-Write-Host "PC Wi-Fi: $network  ->  backends at http://${ip}" -ForegroundColor Green
+Write-Host "PC Wi-Fi: $network  ->  gateway at http://${ip}:$gatewayPort" -ForegroundColor Green
 Write-Host "Make sure the phone is on the same Wi-Fi ($network)." -ForegroundColor Yellow
 
-flutter run --dart-define=API_HOST=$ip @args
+flutter run --dart-define=GATEWAY_BASE_URL=http://${ip}:$gatewayPort @args

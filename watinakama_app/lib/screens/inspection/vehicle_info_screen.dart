@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../constants/app_colors.dart';
 import '../../widgets/inspection_app_bar.dart';
 import '../../widgets/progress_stepper.dart';
@@ -235,15 +236,36 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
                         const SizedBox(height: 14),
                         
                         _buildLabel("Total Previous Owners"),
-                        _buildTextField(_ownersController, "e.g. 2", keyboardType: TextInputType.number),
+                        _buildTextField(
+                          _ownersController,
+                          "e.g. 2",
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(2),
+                          ],
+                        ),
                         const SizedBox(height: 14),
-                        
+
                         _buildLabel("Mileage (km)"),
-                        _buildTextField(_mileageController, "e.g. 85000", keyboardType: TextInputType.number),
+                        _buildTextField(
+                          _mileageController,
+                          "e.g. 85000",
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                            LengthLimitingTextInputFormatter(7),
+                          ],
+                        ),
                         const SizedBox(height: 14),
-                        
+
                         _buildLabel("Listed Price (Million LKR)"),
-                        _buildTextField(_listedPriceController, "e.g. 3.89", keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+                        _buildTextField(
+                          _listedPriceController,
+                          "e.g. 3.89",
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          inputFormatters: [_decimalInputFormatter],
+                        ),
                         const SizedBox(height: 14),
                         
                         _buildLabel("Vehicle Import Condition"),
@@ -345,11 +367,21 @@ class _VehicleInfoScreenState extends State<VehicleInfoScreen> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String hint, {TextInputType keyboardType = TextInputType.text}) {
+  static final _decimalInputFormatter = TextInputFormatter.withFunction((oldValue, newValue) {
+    if (newValue.text.isEmpty) return newValue;
+    return RegExp(r'^\d{0,7}(\.\d{0,2})?$').hasMatch(newValue.text) ? newValue : oldValue;
+  });
 
+  Widget _buildTextField(
+    TextEditingController controller,
+    String hint, {
+    TextInputType keyboardType = TextInputType.text,
+    List<TextInputFormatter>? inputFormatters,
+  }) {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
       style: const TextStyle(color: AppColors.textWhite),
       decoration: InputDecoration(
         hintText: hint,

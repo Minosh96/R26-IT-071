@@ -1,9 +1,13 @@
+import pathlib
+
 from fastapi import FastAPI, File, UploadFile
 from fastapi.responses import JSONResponse
 import uvicorn
 from inference.predict import predict_vin
 
 app = FastAPI(title="VIN Authentication API", description="API for classifying VIN images as Original, Altered, or Need Review")
+
+ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif"}
 
 @app.get("/health")
 async def health_check():
@@ -20,16 +24,53 @@ async def predict(file: UploadFile = File(...)):
     """
     Endpoint to upload a VIN image and get a prediction.
     """
+    file_ext = pathlib.Path(file.filename or "").suffix.lower()
+    if file_ext not in ALLOWED_IMAGE_EXTENSIONS:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "message": (
+                    f"Unsupported file type ({file_ext or 'unknown'}). "
+                    f"Please upload a {', '.join(sorted(e.lstrip('.').upper() for e in ALLOWED_IMAGE_EXTENSIONS))} image."
+                ),
+                "status": "error",
+            },
+        )
+
     try:
         contents = await file.read()
         prediction = predict_vin(contents)
-        
+
+        if prediction.get("not_vin"):
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "message": (
+                        "This doesn't look like a VIN or chassis number. Take a clear, close photo of "
+                        "the number stamped on the car, filling the frame."
+                    ),
+                    "code": "NOT_VIN",
+                    "vin_score": prediction["vin_score"],
+                    "status": "error",
+                },
+            )
+
+        if prediction.get("invalid_image"):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "message": "The uploaded file is not a valid image. Please upload a clear JPG or PNG photo of the VIN plate.",
+                    "status": "error",
+                },
+            )
+
         return {
             "filename": file.filename,
-    "label": prediction["label"],
-    "confidence": prediction["confidence"],
-    "status": "success"
-    }
+            "label": prediction["label"],
+            "confidence": prediction["confidence"],
+            "vin_score": prediction["vin_score"],
+            "status": "success",
+        }
     except Exception as e:
         return JSONResponse(
             status_code=500,

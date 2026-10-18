@@ -34,7 +34,8 @@ YAMNET_URL = "https://tfhub.dev/google/yamnet/1"
 API_TOKEN = os.getenv("API_SECRET_TOKEN", "dev-token-change-in-production")
 UPLOAD_FOLDER = "data/uploads"
 MAX_FILE_SIZE_MB = 50
-ALLOWED_EXTENSIONS = {".wav", ".mp3", ".m4a"}
+MIN_FILE_SIZE_KB = int(os.getenv("MIN_FILE_SIZE_KB", 5))
+ALLOWED_EXTENSIONS = {".wav", ".mp3", ".m4a", ".mp4"}
 PORT = int(os.getenv("FLASK_PORT", 5003))
 
 # Initialize Flask app
@@ -49,7 +50,8 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def ensure_wav(path):
     """
-    Phones usually record .m4a (AAC), which librosa cannot decode without ffmpeg.
+    Phones usually record .m4a (AAC), which librosa cannot decode without a system
+    ffmpeg (the Docker image has one, a Windows dev machine usually doesn't).
     Convert anything that isn't .wav to 16 kHz mono WAV using the ffmpeg binary
     bundled with imageio-ffmpeg. Returns the path to analyse.
     """
@@ -187,6 +189,21 @@ def analyze_engine_sound():
         type: file
         required: false
         description: Engine acceleration sound file
+      - name: audio_full
+        in: formData
+        type: file
+        required: false
+        description: One guided recording covering engine start, idle and acceleration
+      - name: start_end
+        in: formData
+        type: number
+        required: false
+        description: Second at which the app moved from "start" to "idle" (audio_full only)
+      - name: idle_end
+        in: formData
+        type: number
+        required: false
+        description: Second at which the app moved from "idle" to "accelerate" (audio_full only)
       - name: audio_file
         in: formData
         type: file
@@ -201,67 +218,97 @@ def analyze_engine_sound():
         description: Analysis successful
     """
     # --- Multi-Stage Analysis Support ---
-    stages = ['audio_start', 'audio_idle', 'audio_acceleration']
-    files_to_process = []
+    # Ordered field names; 'audio_file' is a legacy single-clip fallback.
+    stage_fields = ['audio_start', 'audio_idle', 'audio_acceleration']
+    file_map = {}            # field -> saved temp path (passed to analyze)
+    pre_invalid = {}         # field -> per-stage rejection (format/size, before analyze)
     temp_paths = []
-    
-    # Check if any stage-specific files are provided
-    for stage in stages:
-        if stage in request.files:
-            file = request.files[stage]
-            if file.filename != '':
-                file_ext = pathlib.Path(file.filename).suffix.lower()
-                if file_ext in ALLOWED_EXTENSIONS:
-                    temp_filename = f"{uuid.uuid4()}_{stage}{file_ext}"
-                    temp_path = os.path.join(UPLOAD_FOLDER, temp_filename)
-                    file.save(temp_path)
-                    files_to_process.append(temp_path)
-                    temp_paths.append(temp_path)
+    rejected_extensions = set()
 
-    # Fallback to single 'audio_file' for backward compatibility
-    if not files_to_process and 'audio_file' in request.files:
-        file = request.files['audio_file']
-        if file.filename != '':
-            file_ext = pathlib.Path(file.filename).suffix.lower()
-            if file_ext in ALLOWED_EXTENSIONS:
-                temp_filename = f"{uuid.uuid4()}_single{file_ext}"
-                temp_path = os.path.join(UPLOAD_FOLDER, temp_filename)
-                file.save(temp_path)
-                files_to_process.append(temp_path)
-                temp_paths.append(temp_path)
+    def _accept(field, file):
+        """Save an uploaded file after format + size checks. Records rejections."""
+        file_ext = pathlib.Path(file.filename).suffix.lower()
+        if file_ext not in ALLOWED_EXTENSIONS:
+            rejected_extensions.add(file_ext or "unknown")
+            allowed = ', '.join(sorted(e.lstrip('.').upper() for e in ALLOWED_EXTENSIONS))
+            pre_invalid[field] = {
+                "valid": False, "code": "BAD_FORMAT",
+                "message": f"Unsupported format ({file_ext or 'unknown'}). Use a {allowed} file.",
+            }
+            return
+        temp_path = os.path.join(UPLOAD_FOLDER, f"{uuid.uuid4()}_{field}{file_ext}")
+        file.save(temp_path)
+        temp_paths.append(temp_path)
+        size_kb = os.path.getsize(temp_path) / 1024
+        if size_kb < MIN_FILE_SIZE_KB:
+            pre_invalid[field] = {
+                "valid": False, "code": "TOO_SMALL",
+                "message": f"File is too small ({size_kb:.0f} KB) and looks empty or corrupt. Please re-record.",
+            }
+            return
+        # Phone formats (.m4a / .mp3 / .mp4) -> WAV so librosa can read them anywhere
+        try:
+            wav_path = ensure_wav(temp_path)
+        except Exception as e:
+            pre_invalid[field] = {
+                "valid": False, "code": "BAD_AUDIO",
+                "message": f"Couldn't read this audio file ({e.__class__.__name__}). Please re-record.",
+            }
+            return
+        if wav_path != temp_path:
+            temp_paths.append(wav_path)
+        file_map[field] = wav_path
 
-    if not files_to_process:
-        abort(400, description="No valid audio files found. Expected 'audio_start', 'audio_idle', or 'audio_acceleration'. Check your multipart form data keys.")
+    # One guided recording covering all three stages (the app's default).
+    full = request.files.get('audio_full')
+    if full is not None and full.filename != '':
+        return _analyze_full_recording(full, _accept, file_map, pre_invalid, temp_paths)
+
+    for field in stage_fields:
+        if field in request.files and request.files[field].filename != '':
+            _accept(field, request.files[field])
+
+    # Legacy single-file fallback only when no stage-specific files were sent.
+    if not file_map and not pre_invalid and 'audio_file' in request.files:
+        if request.files['audio_file'].filename != '':
+            _accept('audio_file', request.files['audio_file'])
+
+    if not file_map and not pre_invalid:
+        abort(400, description="No audio file was provided. Please record or select an audio file first.")
 
     session_id = request.form.get('session_id')
-    
-    try:
-        # Convert phone formats (.m4a / .mp3) to WAV so librosa can read them
-        try:
-            files_to_process = [ensure_wav(p) for p in files_to_process]
-        except Exception as e:
-            return jsonify({"error": f"Could not convert the audio file to WAV: {e}", "status_code": 400}), 400
-        temp_paths.extend(p for p in files_to_process if p not in temp_paths)
 
-        # 4. Perform prediction (Multi or Single)
-        if len(files_to_process) > 1:
-            from inference.predict import predict_multi
-            result = predict_multi(files_to_process, YAMNET_MODEL, SVM_MODEL, SCALER, LABEL_MAP)
+    try:
+        from inference.predict import analyze, _public_stages
+
+        if file_map:
+            result = analyze(file_map, YAMNET_MODEL, SVM_MODEL, SCALER, LABEL_MAP)
         else:
-            result = predict(files_to_process[0], YAMNET_MODEL, SVM_MODEL, SCALER, LABEL_MAP)
-        
-        # 5. Add session_id if provided
+            # Every provided file was rejected pre-analysis.
+            result = {"status": "validation_error",
+                      "message": "Some recordings couldn't be validated. Please re-record the highlighted stages.",
+                      "stages": {}}
+
+        # Merge in format/size rejections so the client sees every stage.
+        if pre_invalid:
+            result.setdefault("stages", {}).update(pre_invalid)
+            result["status"] = "validation_error"
+            result["message"] = "Some recordings couldn't be validated. Please re-record the highlighted stages."
+            result.pop("mhs_score", None)
+            result.pop("fault_class", None)
+
         if session_id:
             result['session_id'] = session_id
-            
-        return jsonify(result), 200
-        
+
+        status_code = 422 if result.get("status") == "validation_error" else 200
+        return jsonify(result), status_code
+
     except Exception as e:
         print(f"Error during analysis: {str(e)}")
         return jsonify({"error": f"Analysis failed: {str(e)}", "status_code": 500}), 500
-        
+
     finally:
-        # 6. Cleanup: Delete all temp files
+        # Cleanup: delete all temp files
         for path in temp_paths:
             if os.path.exists(path):
                 try:
@@ -269,6 +316,46 @@ def analyze_engine_sound():
                 except Exception as e:
                     print(f"Warning: Failed to delete temp file {path}: {e}")
 
+
+
+def _form_seconds(name):
+    """Optional numeric form field, e.g. start_end=8.2; None when missing or invalid."""
+    try:
+        value = float(request.form.get(name, ''))
+        return value if value >= 0 else None
+    except ValueError:
+        return None
+
+
+def _analyze_full_recording(file, accept, file_map, pre_invalid, temp_paths):
+    """Handle an upload in the 'audio_full' field: one recording, cut into stages."""
+    from inference.predict import analyze_recording
+
+    try:
+        accept('audio_full', file)
+        if pre_invalid:
+            stage = pre_invalid['audio_full']
+            result = {"status": "validation_error", "message": stage["message"],
+                      "stages": {"audio_full": stage}}
+        else:
+            result = analyze_recording(file_map['audio_full'], YAMNET_MODEL, SVM_MODEL, SCALER, LABEL_MAP,
+                                       start_end=_form_seconds('start_end'),
+                                       idle_end=_form_seconds('idle_end'))
+        session_id = request.form.get('session_id')
+        if session_id:
+            result['session_id'] = session_id
+        status_code = 422 if result.get("status") == "validation_error" else 200
+        return jsonify(result), status_code
+    except Exception as e:
+        print(f"Error during analysis: {str(e)}")
+        return jsonify({"error": f"Analysis failed: {str(e)}", "status_code": 500}), 500
+    finally:
+        for path in temp_paths:
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except Exception as e:
+                    print(f"Warning: Failed to delete temp file {path}: {e}")
 
 
 if __name__ == "__main__":

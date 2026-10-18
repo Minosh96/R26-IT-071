@@ -1,0 +1,6 @@
+venv/
+__pycache__/
+*.pyc
+.env
+car-damage-demo-100-1/
+.git/

@@ -36,6 +36,15 @@ See [RUNNING.md](../RUNNING.md) at the repo root for setup and run instructions.
 
 ---
 
+## 🎙️ How the App Sends Audio
+
+`POST /api/v1/analyze` accepts either:
+
+- **One guided recording (what the app uses):** `audio_full`, about 30 seconds covering engine start, idle and gentle revving, plus optional `start_end` and `idle_end` (seconds where the app's prompts changed, defaults 8 and 20). The whole recording must be at least 20 s. The server cuts it into the three stages, analyses each one as its own clip, and returns the worst stage. If no engine start is heard, the start stage carries a warning because battery and starter faults can only be heard at start.
+- **Three separate recordings:** `audio_start`, `audio_idle`, `audio_acceleration` (kept for compatibility), or a single `audio_file`.
+
+---
+
 ## 🏃 Retraining / Regenerating Data
 
 ### 1. Generate Synthetic Faults
@@ -52,13 +61,21 @@ python preprocessing/dataset_loader.py
 This will generate `data/processed/embeddings.json` and `embeddings.npy`.
 
 ### 3. Train the Classifier
-Train the SVM model using the extracted features:
+Train the SVM model using the extracted features. Accuracy is measured with 5-fold cross-validation that keeps every recording of one car (and its augmented copies) in the same fold, then the final model is trained on all the data:
 ```bash
 python models/train_svm.py
 ```
 Models will be saved in `models/saved/`.
 
-### 4. Run Inference (Prediction)
+### 4. Run the Tests
+The API tests send real clips from `data/test` through the full pipeline (YAMNet is downloaded on first run):
+```bash
+pip install -r requirements-dev.txt
+python -m pytest tests -q
+```
+They also run in GitHub Actions on every pull request to `main`, and a merge to `main` is only deployed if they pass.
+
+### 5. Run Inference (Prediction)
 To test the system on a single audio file:
 ```bash
 python inference/predict.py path/to/your/audio.wav

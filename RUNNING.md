@@ -76,25 +76,36 @@ The two build steps are needed once per machine (and again after adding new list
 
 Same Bearer-token auth as Component 3. Docs / test UI: http://localhost:5004/apidocs/
 
-## 5. Mobile App (Flutter)
+## 5. API gateway (port 9000)
+
+The app talks only to the gateway, which forwards each request to the right backend and adds its token.
+By default the app uses the deployed Azure gateway; to test your local backends, run the gateway locally too.
+
+```bash
+cd api_gateway
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+copy .env.example .env       # then set ENGINE_API_TOKEN / VALUATION_API_TOKEN to each component's API_SECRET_TOKEN
+uvicorn app:app --host 0.0.0.0 --port 9000
+```
+
+## 6. Mobile App (Flutter)
 
 ```bash
 cd watinakama_app
 flutter pub get
 ```
 
-The app finds the backends through the `API_HOST` launch setting (see [lib/services/api_service.dart](watinakama_app/lib/services/api_service.dart)); no code change is needed.
-
 | Where the app runs | Command |
 | :--- | :--- |
-| Real phone plugged in by USB (most reliable) | `powershell -ExecutionPolicy Bypass -File run_on_phone.ps1 -Usb` (forwards the ports over the cable; any Wi-Fi) |
-| Real phone on the same Wi-Fi | `powershell -ExecutionPolicy Bypass -File run_on_phone.ps1` (looks up the PC's current Wi-Fi address) |
-| Android emulator | `flutter run --dart-define=API_HOST=10.0.2.2` |
-| Windows desktop / Chrome | `flutter run` (uses `127.0.0.1`) |
+| Against the deployed Azure services | `flutter run` |
+| Real phone by USB, local services (most reliable) | `powershell -ExecutionPolicy Bypass -File run_on_phone.ps1 -Usb` (forwards port 9000 over the cable; any Wi-Fi) |
+| Real phone on the same Wi-Fi, local services | `powershell -ExecutionPolicy Bypass -File run_on_phone.ps1` (looks up the PC's current Wi-Fi address) |
+| Android emulator, local services | `flutter run --dart-define=GATEWAY_BASE_URL=http://10.0.2.2:9000` |
+| Windows desktop / Chrome, local services | `flutter run --dart-define=GATEWAY_BASE_URL=http://127.0.0.1:9000` |
 
 The PC's Wi-Fi address changes when it joins a different network, so on a phone always launch through `run_on_phone.ps1`.
-
-The app pings all four backend ports on startup to confirm they're reachable before letting you begin an inspection, so start all four backends first.
 
 ---
 
@@ -103,4 +114,4 @@ The app pings all four backend ports on startup to confirm they're reachable bef
 - **Port 8000 already in use / VIN results look like body-condition results** — Component 2 was probably started with `python main.py` instead of the `uvicorn` command above.
 - **"model file not found" warning on Component 2 startup** — the `.h5` model files must sit directly inside `component2-body-condition/`, not a subfolder.
 - **401 Unauthorized from Component 3 or 4** — the `Authorization` header's token doesn't match `API_SECRET_TOKEN` in that component's `.env`.
-- **App can't reach any backend** — phone/emulator and dev machine must be on the same network; relaunch with `run_on_phone.ps1` after changing Wi-Fi, and make sure your firewall allows inbound connections on `8000`, `8080`, `5003`, `5004`.
+- **App can't reach any backend** — phone/emulator and dev machine must be on the same network; check the local gateway is running, relaunch with `run_on_phone.ps1` after changing Wi-Fi, and make sure your firewall allows inbound connections on port `9000`.

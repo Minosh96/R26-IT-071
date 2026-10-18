@@ -4,32 +4,60 @@ import 'package:http/http.dart' as http;
 import '../utils/error_messages.dart';
 
 class ApiConfig {
-  // Address of the PC running the backends, set when launching the app:
-  //   real phone:       flutter run --dart-define=API_HOST=<PC Wi-Fi IP>  (or run_on_phone.ps1)
-  //   Android emulator: flutter run --dart-define=API_HOST=10.0.2.2
-  //   Windows / Chrome: flutter run  (defaults to 127.0.0.1)
-  static const String baseIp = String.fromEnvironment('API_HOST', defaultValue: '127.0.0.1');
+  // The gateway is the single public entry point; it proxies to the 4
+  // backend services and injects their auth tokens server-side.
+  //
+  // Override for local testing without touching this file, e.g.:
+  //   flutter run --dart-define=GATEWAY_BASE_URL=http://192.168.1.4:9000
+  // (use your PC's LAN IP for a physical phone, or http://10.0.2.2:9000 on the
+  // Android emulator). Defaults to the deployed Azure gateway.
+  static const String gatewayBaseUrl = String.fromEnvironment(
+    'GATEWAY_BASE_URL',
+    defaultValue: 'https://watinakama-gateway.azurewebsites.net',
+  );
 
-  static const String vinApi = 'http://$baseIp:8000';
-  static const String bodyApi = 'http://$baseIp:8080';
-  static const String engineApi = 'http://$baseIp:5003';
-  static const String valuationApi = 'http://$baseIp:5004';
-
-  static const String engineToken =
-      'Bearer 097ad29076b1a4d2121e9ee67f478357e3d883ebd57d3ab609ae725495f79bcf';
-  static const String valuationToken = 'Bearer watinakama-valuation-api-2026';
+  static const String vinApi = '$gatewayBaseUrl/vin';
+  static const String bodyApi = '$gatewayBaseUrl/body';
+  static const String engineApi = '$gatewayBaseUrl/engine';
+  static const String valuationApi = '$gatewayBaseUrl/valuation';
 }
 
 class ApiService {
+  /// Analyzes one guided recording that covers engine start, idle and revving.
+  /// [startEnd] and [idleEnd] are the seconds at which the app moved the user
+  /// to the next step; the server cuts the recording there. Leave them null for
+  /// an uploaded file, and the server uses its defaults.
+  Future<Map<String, dynamic>> analyzeEngineRecording(String path, {double? startEnd, double? idleEnd}) async {
+    try {
+      final request = http.MultipartRequest('POST', Uri.parse('${ApiConfig.engineApi}/api/v1/analyze'));
+      request.files.add(await http.MultipartFile.fromPath('audio_full', path));
+      if (startEnd != null && idleEnd != null) {
+        request.fields['start_end'] = startEnd.toString();
+        request.fields['idle_end'] = idleEnd.toString();
+      }
+
+      final response = await http.Response.fromStream(await request.send());
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      if (response.statusCode == 200 || body['status'] == 'validation_error') {
+        return body;
+      }
+      return {
+        "status": "error",
+        "status_code": response.statusCode,
+        "message": body['message'] ?? body['error'] ?? "API returned status code ${response.statusCode}",
+      };
+    } catch (e) {
+      return {"status": "error", "message": "Could not reach the engine analysis service. Please try again."};
+    }
+  }
+
   /// Analyzes engine sound from one or more audio stages.
   /// Keys in phasePaths: 'start', 'idle', 'acceleration'
   Future<Map<String, dynamic>> analyzeEngine(Map<String, String> phasePaths) async {
     try {
       var request = http.MultipartRequest(
           'POST', Uri.parse('${ApiConfig.engineApi}/api/v1/analyze'));
-      
-      request.headers['Authorization'] = ApiConfig.engineToken;
-      
+
       // Map the keys from the recording screen to the backend expected field names
       if (phasePaths.containsKey('engine_start')) {
         request.files.add(await http.MultipartFile.fromPath('audio_start', phasePaths['engine_start']!));
@@ -58,12 +86,23 @@ class ApiService {
       var response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode != 200) {
-        String msg = "API returned status code ${response.statusCode}";
+        // 422 carries a structured per-stage validation result — pass it through
+        // intact so the UI can highlight which recordings failed and why.
         try {
-          final errBody = jsonDecode(response.body);
-          msg = errBody['detail'] ?? errBody['message'] ?? errBody['error'] ?? msg;
-        } catch (_) {}
-        return {"status": "error", "status_code": response.statusCode, "message": msg};
+          final errBody = jsonDecode(response.body) as Map<String, dynamic>;
+          if (errBody['status'] == 'validation_error' || errBody.containsKey('stages')) {
+            return errBody;
+          }
+          final msg = errBody['detail'] ?? errBody['message'] ?? errBody['error'] ??
+              "API returned status code ${response.statusCode}";
+          return {"status": "error", "status_code": response.statusCode, "message": msg};
+        } catch (_) {
+          return {
+            "status": "error",
+            "status_code": response.statusCode,
+            "message": "API returned status code ${response.statusCode}",
+          };
+        }
       }
 
       return jsonDecode(response.body) as Map<String, dynamic>;
@@ -105,6 +144,51 @@ class ApiService {
     }
   }
 
+  /// Validates a single vehicle image against the expected view.
+  /// [imagePath] – path to the image file
+  /// [expectedView] – one of: front, rear, left, right, roof
+  ///
+  /// Returns a map with:
+  ///   valid      – bool
+  ///   correct    – bool
+  ///   predicted  – String (e.g. "Left")
+  ///   expected   – String (e.g. "Left")
+  ///   confidence – double
+  ///   message    – String (human-readable verdict)
+  Future<Map<String, dynamic>> validateView(String imagePath, String expectedView) async {
+    try {
+      final uri = Uri.parse(
+        '${ApiConfig.bodyApi}/api/v1/validate-view?expected_view=$expectedView',
+      );
+      print('VIEW API URL: $uri');
+      
+      var request = http.MultipartRequest('POST', uri);
+      request.files.add(await http.MultipartFile.fromPath('image', imagePath));
+
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      print('STATUS: ${response.statusCode}');
+      print('BODY: ${response.body}');
+
+      if (response.statusCode != 200) {
+        String msg = "View validation API returned status ${response.statusCode}";
+        try {
+          final errBody = jsonDecode(response.body);
+          msg = errBody['detail'] ?? errBody['message'] ?? msg;
+        } catch (_) {}
+        // Fails correctly instead of fail-open
+        return {"valid": false, "correct": false, "status": "error", "message": msg};
+      }
+
+      return jsonDecode(response.body) as Map<String, dynamic>;
+    } catch (e) {
+      print('VIEW API ERROR: $e');
+      // Network error – no longer fail-open, return false!
+      return {"valid": false, "correct": false, "status": "error", "message": e.toString()};
+    }
+  }
+
   /// Scans VIN from an image file.
   Future<Map<String, dynamic>> scanVin(File vinImage) async {
     try {
@@ -139,7 +223,6 @@ class ApiService {
       var response = await http.post(
         Uri.parse('${ApiConfig.valuationApi}/api/v1/valuate'),
         headers: {
-          'Authorization': ApiConfig.valuationToken,
           'Content-Type': 'application/json',
         },
         body: jsonEncode(data),

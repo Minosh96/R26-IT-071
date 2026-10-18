@@ -71,7 +71,7 @@ def generate_augmented_data():
             
             method_idx = (method_idx + 1) % 6
             
-            out_name = f"battery_aug_{start_idx:03d}.wav"
+            out_name = f"battery_aug_{start_idx:03d}__{os.path.splitext(src_filename)[0]}.wav"
             out_path = os.path.join(INPUT_FOLDER, out_name)
             sf.write(out_path, aug_audio, sr)
             
