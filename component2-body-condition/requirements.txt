@@ -7,7 +7,7 @@ opencv-python
 python-multipart
 Pillow
 numpy
-tensorflow
+tensorflow==2.21.0  # the view weights are in this version's Keras format
 pillow-heif
 flasgger
 fastapi
