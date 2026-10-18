@@ -46,6 +46,24 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE_MB * 1024 * 1024
 # Ensure upload directory exists
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+
+def ensure_wav(path):
+    """
+    Phones usually record .m4a (AAC), which librosa cannot decode without ffmpeg.
+    Convert anything that isn't .wav to 16 kHz mono WAV using the ffmpeg binary
+    bundled with imageio-ffmpeg. Returns the path to analyse.
+    """
+    if pathlib.Path(path).suffix.lower() == ".wav":
+        return path
+    import subprocess
+    import imageio_ffmpeg
+    wav_path = str(pathlib.Path(path).with_suffix(".wav"))
+    subprocess.run(
+        [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error", "-i", path, "-ac", "1", "-ar", "16000", wav_path],
+        check=True, capture_output=True,
+    )
+    return wav_path
+
 # --- Global Model Variables ---
 # Load all models once at startup to prevent latency on every request
 YAMNET_MODEL = None
@@ -218,6 +236,13 @@ def analyze_engine_sound():
     session_id = request.form.get('session_id')
     
     try:
+        # Convert phone formats (.m4a / .mp3) to WAV so librosa can read them
+        try:
+            files_to_process = [ensure_wav(p) for p in files_to_process]
+        except Exception as e:
+            return jsonify({"error": f"Could not convert the audio file to WAV: {e}", "status_code": 400}), 400
+        temp_paths.extend(p for p in files_to_process if p not in temp_paths)
+
         # 4. Perform prediction (Multi or Single)
         if len(files_to_process) > 1:
             from inference.predict import predict_multi
