@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import '../../constants/app_colors.dart';
 import '../../widgets/inspection_app_bar.dart';
@@ -562,30 +564,37 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
   String _millions(dynamic lkr) => ((lkr as num? ?? 0) / 1000000).toStringAsFixed(2);
 
-  String _signedLkr(num lkr) {
-    final abs = lkr.abs().round().toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
-    return "${lkr < 0 ? '−' : '+'}LKR $abs";
-  }
+  String _lkr(num lkr) =>
+      "LKR ${lkr.abs().round().toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',')}";
 
-  /// Price breakdown from the valuation service: the ML market price, what moved it,
-  /// and each condition deduction from the repair cost survey.
+  String _signedLkr(num lkr) => "${lkr < 0 ? '−' : '+'}${_lkr(lkr)}";
+
+  /// Price breakdown from the valuation service: the market price of this car in good
+  /// condition, then only the amounts deducted from it and why, so the lines add up.
   Widget _buildDepreciationFactorsCard() {
     final r = _valuationResult;
-    final factors = (r['price_factors'] as List? ?? []).cast<Map>();
-    final engineColor = r['engine_health_color']?.toString() ?? 'green';
+    final market = r['base_market_value_lkr'] as num? ?? 0;
+    final fair = r['fair_value_lkr'] as num? ?? 0;
+    final engine = r['engine_deduction_lkr'] as num? ?? 0;
+    // The service rounds engine + body together, so show body as the rounded remainder
+    final body = (r['condition_deduction_lkr'] as num? ?? 0) - engine;
+    // Whatever is left between market and fair value is the VIN risk discount
+    final vin = (r['vin_discount_lkr'] as num? ?? 0) > 0 ? math.max(0, market - engine - body - fair) : 0;
+    final deductions = <Map<String, dynamic>>[
+      if (engine > 0)
+        {'label': 'Engine repair (possible fault)', 'text': _signedLkr(-engine), 'color': AppColors.statusColorFor(_engineConditionScore)},
+      if (body > 0)
+        {'label': 'Body repair (${r['body_damage_category'] ?? 'minor'} damage)', 'text': _signedLkr(-body), 'color': AppColors.statusColorFor(_bodyConditionScore)},
+      if (vin > 0)
+        {'label': 'VIN not confirmed (risk discount)', 'text': _signedLkr(-vin), 'color': AppColors.statusRed},
+    ];
 
     final rows = <Map<String, dynamic>>[
-      {'label': 'Market value (good condition)', 'text': 'LKR ${_millions(r['base_market_value_lkr'])}M', 'color': AppColors.textWhite, 'bold': true},
-      ...factors.take(4).map((f) => {
-            'label': '   ${f['text'].toString().split(' for ').last}',
-            'text': _signedLkr(f['impact_lkr'] as num),
-            'color': (f['impact_lkr'] as num) < 0 ? AppColors.statusAmber : AppColors.statusGreen,
-          }),
-      {'label': 'Engine ($engineColor)', 'text': _signedLkr(-(r['engine_deduction_lkr'] as num? ?? 0)), 'color': AppColors.statusColorFor(_engineConditionScore)},
-      {'label': 'Body (${r['body_damage_category'] ?? 'none'} damage)', 'text': _signedLkr(-(r['body_deduction_lkr'] as num? ?? 0)), 'color': AppColors.statusColorFor(_bodyConditionScore)},
-      if ((r['vin_discount_lkr'] as num? ?? 0) > 0)
-        {'label': 'VIN not confirmed', 'text': _signedLkr(-(r['vin_discount_lkr'] as num)), 'color': AppColors.statusRed},
-      {'label': 'Fair value', 'text': 'LKR ${_millions(r['fair_value_lkr'])}M', 'color': AppColors.textWhite, 'bold': true},
+      {'label': 'Market value (good condition)', 'text': _lkr(market), 'color': AppColors.textWhite, 'bold': true},
+      ...deductions,
+      if (deductions.isEmpty)
+        {'label': 'No deductions: engine and body look good', 'text': _signedLkr(0), 'color': AppColors.statusGreen},
+      {'label': 'Fair value', 'text': _lkr(fair), 'color': AppColors.textWhite, 'bold': true},
     ];
 
     return AppCard(
@@ -598,7 +607,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
           ),
           const SizedBox(height: 4),
           Text(
-            "Market value from ${r['market_as_of'] ?? 'recent'} Suzuki Alto listings; repair costs from a survey of local repair centres.",
+            "What a Suzuki Alto like this sells for in good condition (${r['market_as_of'] ?? 'recent'} listings), minus repair costs and risks found in the inspection.",
             style: const TextStyle(color: AppColors.textGray, fontSize: 11),
           ),
           const SizedBox(height: 12),
