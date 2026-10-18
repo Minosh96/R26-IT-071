@@ -128,7 +128,7 @@ def _build_view_model() -> Model:
 
 # ── Weight loading ────────────────────────────────────────────────────────────
 
-def _find_weights_file(filename: str = "vehicle_view_weights_v2.weights.h5") -> str:
+def _find_weights_file(filename: str = "vehicle_view_weights.weights.h5") -> str:
     """Search for the weights file in standard locations."""
     search_paths = [
         _COMPONENT_DIR / filename,
