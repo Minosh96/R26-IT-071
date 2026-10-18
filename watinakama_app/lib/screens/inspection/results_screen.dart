@@ -562,66 +562,91 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
   String _millions(dynamic lkr) => ((lkr as num? ?? 0) / 1000000).toStringAsFixed(2);
 
-  String _signedLkr(num lkr) {
-    final abs = lkr.abs().round().toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
-    return "${lkr < 0 ? '−' : '+'}LKR $abs";
-  }
-
-  /// Price breakdown from the valuation service: the ML market price, what moved it,
-  /// and each condition deduction from the repair cost survey.
+  /// Depreciation factors as a bar chart. Each bar is that factor's effect in
+  /// rupees from the valuation service, shown as a % of the market value:
+  ///   Body / Mechanical - repair cost from the survey (body score, engine health)
+  ///   Mileage / Year    - the model's price effect compared with a typical Alto
   Widget _buildDepreciationFactorsCard() {
     final r = _valuationResult;
+    final market = (r['base_market_value_lkr'] as num? ?? 0).toDouble();
     final factors = (r['price_factors'] as List? ?? []).cast<Map>();
-    final engineColor = r['engine_health_color']?.toString() ?? 'green';
+
+    double factorLkr(String key) {
+      final match = factors.where((f) => f['factor'] == key);
+      return match.isEmpty ? 0 : (match.first['impact_lkr'] as num).toDouble();
+    }
+
+    double pct(double lkr) => market > 0 ? lkr / market * 100 : 0;
 
     final rows = <Map<String, dynamic>>[
-      {'label': 'Market value (good condition)', 'text': 'LKR ${_millions(r['base_market_value_lkr'])}M', 'color': AppColors.textWhite, 'bold': true},
-      ...factors.take(4).map((f) => {
-            'label': '   ${f['text'].toString().split(' for ').last}',
-            'text': _signedLkr(f['impact_lkr'] as num),
-            'color': (f['impact_lkr'] as num) < 0 ? AppColors.statusAmber : AppColors.statusGreen,
-          }),
-      {'label': 'Engine ($engineColor)', 'text': _signedLkr(-(r['engine_deduction_lkr'] as num? ?? 0)), 'color': AppColors.statusColorFor(_engineConditionScore)},
-      {'label': 'Body (${r['body_damage_category'] ?? 'none'} damage)', 'text': _signedLkr(-(r['body_deduction_lkr'] as num? ?? 0)), 'color': AppColors.statusColorFor(_bodyConditionScore)},
+      {'label': 'Body Condition', 'value': pct(-(r['body_deduction_lkr'] as num? ?? 0).toDouble()), 'color': AppColors.statusColorFor(_bodyConditionScore)},
+      {'label': 'Mileage', 'value': pct(factorLkr('mileage')), 'color': AppColors.statusAmber},
+      {'label': 'Mechanical', 'value': pct(-(r['engine_deduction_lkr'] as num? ?? 0).toDouble()), 'color': AppColors.statusColorFor(_engineConditionScore)},
+      {'label': 'Year', 'value': pct(factorLkr('year')), 'color': AppColors.primaryBlue},
       if ((r['vin_discount_lkr'] as num? ?? 0) > 0)
-        {'label': 'VIN not confirmed', 'text': _signedLkr(-(r['vin_discount_lkr'] as num)), 'color': AppColors.statusRed},
-      {'label': 'Fair value', 'text': 'LKR ${_millions(r['fair_value_lkr'])}M', 'color': AppColors.textWhite, 'bold': true},
+        {'label': 'VIN Not Confirmed', 'value': pct(-(r['vin_discount_lkr'] as num).toDouble()), 'color': AppColors.statusRed},
     ];
+
+    // The largest effect fills the bar; at least 5% so small effects stay small.
+    final scale = rows.map((f) => (f['value'] as double).abs()).fold<double>(5, (a, b) => b > a ? b : a);
+
+    String label(double v) {
+      final shown = v.abs() < 10 ? v.toStringAsFixed(1) : v.toStringAsFixed(0);
+      return v > 0 ? '+$shown%' : '$shown%';
+    }
 
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            "How This Price Was Calculated",
+            "Depreciation Factors",
             style: TextStyle(color: AppColors.textWhite, fontWeight: FontWeight.bold, fontSize: 15),
           ),
-          const SizedBox(height: 4),
-          Text(
-            "Market value from ${r['market_as_of'] ?? 'recent'} Suzuki Alto listings; repair costs from a survey of local repair centres.",
-            style: const TextStyle(color: AppColors.textGray, fontSize: 11),
-          ),
-          const SizedBox(height: 12),
-          ...rows.map((row) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+          const SizedBox(height: 14),
+          ...rows.map((f) => Padding(
+                padding: const EdgeInsets.only(bottom: 10),
                 child: Row(
                   children: [
-                    Expanded(
+                    SizedBox(
+                      width: 130,
                       child: Text(
-                        row['label'] as String,
-                        style: TextStyle(
-                          color: row['bold'] == true ? AppColors.textWhite : AppColors.textGray,
-                          fontSize: 12,
-                          fontWeight: row['bold'] == true ? FontWeight.bold : FontWeight.normal,
-                        ),
+                        f['label'] as String,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(color: AppColors.textWhite, fontSize: 12),
                       ),
                     ),
-                    Text(
-                      row['text'] as String,
-                      style: TextStyle(
-                        color: row['color'] as Color,
-                        fontSize: 12,
-                        fontWeight: row['bold'] == true ? FontWeight.bold : FontWeight.w500,
+                    Expanded(
+                      child: Stack(
+                        children: [
+                          Container(
+                            height: 8,
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade300,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                          ),
+                          FractionallySizedBox(
+                            widthFactor: ((f['value'] as double).abs() / scale).clamp(0.0, 1.0),
+                            child: Container(
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: f['color'] as Color,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 48,
+                      child: Text(
+                        label(f['value'] as double),
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(color: AppColors.textGray, fontSize: 12),
                       ),
                     ),
                   ],
