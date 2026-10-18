@@ -28,8 +28,8 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
   final List<String?> _capturedPaths = [null, null, null, null, null];
   final AuthService _authService = AuthService();
   bool _isAnalyzing = false;
-  Map<String, dynamic>? _bodyResult;
   final ApiService _apiService = ApiService();
+
 
   @override
   void initState() {
@@ -106,7 +106,6 @@ class _BodyImagesScreenState extends State<BodyImagesScreen> {
 
     if (!mounted) return;
     setState(() {
-      _bodyResult = result;
       _isAnalyzing = false;
     });
 

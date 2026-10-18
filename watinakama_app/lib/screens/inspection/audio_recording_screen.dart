@@ -42,12 +42,11 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
   String? _profilePicPath;
   String _activePhaseKey = 'engine_start';
   bool _isAnalyzing = false;
-  Map<String, dynamic>? _engineResult;
   final ApiService _apiService = ApiService();
   String? _audioFilePath;
 
   // Recording phases
-  Map<String, String> _phaseStatus = {
+  final Map<String, String> _phaseStatus = {
     'engine_start': 'pending',
     'idle': 'pending',
     'acceleration': 'pending',
@@ -103,7 +102,8 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
     try {
       if (await _recorder.hasPermission()) {
         final dir = await getApplicationDocumentsDirectory();
-        _audioFilePath = '${dir.path}/engine_recording.wav';
+        // One file per phase, so recording "idle" doesn't overwrite "engine_start"
+        _audioFilePath = '${dir.path}/engine_$_activePhaseKey.wav';
         
         await _recorder.start(
           const RecordConfig(encoder: AudioEncoder.wav),
@@ -121,7 +121,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
         _startTimer();
       }
     } catch (e) {
-      ToastService.show(context, "Error starting recorder", isError: true);
+      if (mounted) ToastService.show(context, "Error starting recorder", isError: true);
     }
   }
 
@@ -184,7 +184,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
         });
       }
     } catch (e) {
-      ToastService.show(context, "Error playing audio", isError: true);
+      if (mounted) ToastService.show(context, "Error playing audio", isError: true);
     }
   }
 
@@ -235,6 +235,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
 
       if (result != null && result.files.single.path != null) {
         String path = result.files.single.path!;
+        if (!mounted) return;
         setState(() {
           _audioFilePath = path;
           _recordingPath = path;
@@ -245,7 +246,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
         ToastService.show(context, "Audio file selected");
       }
     } catch (e) {
-      ToastService.show(context, "Error picking audio file", isError: true);
+      if (mounted) ToastService.show(context, "Error picking audio file", isError: true);
     }
   }
 
@@ -299,7 +300,6 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
 
     if (!mounted) return;
     setState(() {
-      _engineResult = result;
       _isAnalyzing = false;
     });
 
@@ -308,7 +308,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
     } else {
       ToastService.show(
         context,
-        'Analysis failed: ${result["message"] ?? result["error"] ?? "Unknown error"}',
+        'Analysis failed: ${result["message"] ?? result["error"] ?? result["reason"] ?? "Unknown error"}',
         isError: true,
       );
     }

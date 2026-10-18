@@ -4,9 +4,11 @@ import 'package:http/http.dart' as http;
 import '../utils/error_messages.dart';
 
 class ApiConfig {
-  // Change this to your PC's IP address when using real device
-  // Use 10.0.2.2 for Android emulator
-  static const String baseIp = '127.0.0.1';
+  // Address of the PC running the backends, set when launching the app:
+  //   real phone:       flutter run --dart-define=API_HOST=<PC Wi-Fi IP>  (or run_on_phone.ps1)
+  //   Android emulator: flutter run --dart-define=API_HOST=10.0.2.2
+  //   Windows / Chrome: flutter run  (defaults to 127.0.0.1)
+  static const String baseIp = String.fromEnvironment('API_HOST', defaultValue: '127.0.0.1');
 
   static const String vinApi = 'http://$baseIp:8000';
   static const String bodyApi = 'http://$baseIp:8080';

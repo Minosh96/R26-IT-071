@@ -22,14 +22,13 @@ class VinScanScreen extends StatefulWidget {
 
 class _VinScanScreenState extends State<VinScanScreen> {
   Map<String, dynamic> _vehicleData = {};
-  List<String?> _bodyImages = [];
   String _userName = '';
+
   bool _isAnalyzing = false;
   bool _flashOn = false;
   String? _scannedValue;
   String? _capturedImagePath;
   String? _profilePicPath;
-  Map<String, dynamic>? _vinResult;
   final ApiService _apiService = ApiService();
   final MobileScannerController _scannerController = MobileScannerController();
   final AuthService _authService = AuthService();
@@ -59,7 +58,6 @@ class _VinScanScreenState extends State<VinScanScreen> {
       if (args is Map<String, dynamic>) {
         setState(() {
           _vehicleData = args;
-          _bodyImages = List<String?>.from(args['body_images'] ?? []);
         });
       }
     });
@@ -129,7 +127,6 @@ class _VinScanScreenState extends State<VinScanScreen> {
 
     if (!mounted) return;
     setState(() {
-      _vinResult = result;
       _isAnalyzing = false;
     });
 
@@ -160,7 +157,7 @@ class _VinScanScreenState extends State<VinScanScreen> {
       icon = Icons.warning;
       color = AppColors.statusRed;
       statusText = "VIN ALTERED";
-      warning = "Do not purchase this vehicle. The VIN has been tampered with.";
+      warning = "There is an issue with this vehicle's VIN number. Please check this vehicle further before buying.";
     } else {
       icon = Icons.help_outline;
       color = AppColors.statusAmber;
