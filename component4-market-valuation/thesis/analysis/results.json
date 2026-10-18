@@ -1,0 +1,840 @@
+{
+  "dataset": {
+    "real_rows": 338,
+    "holistic_rows": 2000,
+    "holistic_sources": {
+      "synthetic_holistic": 1662,
+      "real_augmented": 338
+    },
+    "train_rows": 1600,
+    "test_rows": 400,
+    "test_sources": {
+      "synthetic_holistic": 322,
+      "real_augmented": 78
+    },
+    "price_mean_real": 3.746242603550296,
+    "price_std_real": 0.28539460997381066
+  },
+  "stack_test": {
+    "mae_lkr": 121905.66860106339,
+    "rmse_lkr": 156415.6284919132,
+    "r2": 0.7164332931441841,
+    "mape_pct": 3.318793770173695,
+    "within_2_5_pct": 49.0,
+    "within_5_pct": 77.25,
+    "within_10_pct": 97.75,
+    "max_abs_err_lkr": 508509.5131779003
+  },
+  "stack_train": {
+    "mae_lkr": 81300.85939279206,
+    "rmse_lkr": 106923.21125797009,
+    "r2": 0.8625088920775134,
+    "mape_pct": 2.189903343583135,
+    "within_2_5_pct": 65.6875,
+    "within_5_pct": 91.1875,
+    "within_10_pct": 99.8125,
+    "max_abs_err_lkr": 433435.3587978099
+  },
+  "stack_test_by_source": {
+    "synthetic_holistic": {
+      "mae_lkr": 122819.77157126683,
+      "rmse_lkr": 157570.80235820988,
+      "r2": 0.7228264122031074,
+      "mape_pct": 3.3458362188407738,
+      "within_2_5_pct": 50.0,
+      "within_5_pct": 76.3975155279503,
+      "within_10_pct": 97.51552795031056,
+      "max_abs_err_lkr": 508509.5131779003
+    },
+    "real_augmented": {
+      "mae_lkr": 118132.06403176197,
+      "rmse_lkr": 151553.66051620856,
+      "r2": 0.6838965364800343,
+      "mape_pct": 3.2071569949070344,
+      "within_2_5_pct": 44.871794871794876,
+      "within_5_pct": 80.76923076923077,
+      "within_10_pct": 98.71794871794873,
+      "max_abs_err_lkr": 449581.2191729685
+    }
+  },
+  "base_learners": {
+    "rf": {
+      "mae_lkr": 124234.27442062776,
+      "rmse_lkr": 158941.3904947966,
+      "r2": 0.7072014189261109,
+      "mape_pct": 3.383263820134097,
+      "within_2_5_pct": 46.75,
+      "within_5_pct": 76.5,
+      "within_10_pct": 97.25,
+      "max_abs_err_lkr": 532022.6915234776
+    },
+    "gb": {
+      "mae_lkr": 130476.22923089,
+      "rmse_lkr": 168116.07629124078,
+      "r2": 0.6724229691183071,
+      "mape_pct": 3.5502058739365108,
+      "within_2_5_pct": 44.5,
+      "within_5_pct": 75.0,
+      "within_10_pct": 96.25,
+      "max_abs_err_lkr": 557937.7405263379
+    },
+    "xgb": {
+      "mae_lkr": 124651.91561222078,
+      "rmse_lkr": 158678.8858532431,
+      "r2": 0.7081677816242834,
+      "mape_pct": 3.3872843310752994,
+      "within_2_5_pct": 46.25,
+      "within_5_pct": 76.5,
+      "within_10_pct": 97.5,
+      "max_abs_err_lkr": 499226.894378662
+    },
+    "lgbm": {
+      "mae_lkr": 136864.00511242996,
+      "rmse_lkr": 174954.75094235232,
+      "r2": 0.6452303722686885,
+      "mape_pct": 3.7327583166180727,
+      "within_2_5_pct": 44.25,
+      "within_5_pct": 72.0,
+      "within_10_pct": 94.75,
+      "max_abs_err_lkr": 515270.38694654737
+    }
+  },
+  "tuned_params": {
+    "rf": {
+      "n_estimators": 300,
+      "max_depth": 10,
+      "min_samples_split": 2
+    },
+    "gb": {
+      "n_estimators": 200,
+      "learning_rate": 0.05,
+      "max_depth": 5
+    },
+    "xgb": {
+      "n_estimators": 100,
+      "learning_rate": 0.1,
+      "max_depth": 7
+    },
+    "lgbm": {
+      "n_estimators": 200,
+      "learning_rate": 0.05,
+      "num_leaves": 50
+    }
+  },
+  "meta_learner": {
+    "coef": {
+      "rf": 0.6362254980218482,
+      "gb": 0.09198460594566939,
+      "xgb": 0.3231830885145784,
+      "lgbm": -0.053514576620665694
+    },
+    "intercept": 0.007301159263298995
+  },
+  "baselines": {
+    "global_mean": {
+      "mae_lkr": 231862.55,
+      "rmse_lkr": 294366.765931152,
+      "r2": -0.004320909348838553,
+      "mape_pct": 6.360283943348277,
+      "within_2_5_pct": 26.75,
+      "within_5_pct": 48.5,
+      "within_10_pct": 79.25,
+      "max_abs_err_lkr": 941125.6250000002
+    },
+    "year_mean": {
+      "mae_lkr": 169716.4432771319,
+      "rmse_lkr": 215427.5953671302,
+      "r2": 0.46210486145767427,
+      "mape_pct": 4.6389384329005505,
+      "within_2_5_pct": 35.5,
+      "within_5_pct": 64.25,
+      "within_10_pct": 89.25,
+      "max_abs_err_lkr": 712880.7692307695
+    },
+    "linear_regression": {
+      "mae_lkr": 157490.7801356443,
+      "rmse_lkr": 202995.57351584453,
+      "r2": 0.5223958549805118,
+      "mape_pct": 4.303542355833626,
+      "within_2_5_pct": 38.75,
+      "within_5_pct": 65.25,
+      "within_10_pct": 92.5,
+      "max_abs_err_lkr": 669056.0573012845
+    }
+  },
+  "permutation_importance_lkr": {
+    "maf_year": {
+      "mean": 48794.32257712051,
+      "std": 4023.7840886599124
+    },
+    "previous_owners": {
+      "mean": 29998.891087232674,
+      "std": 4795.7962749798435
+    },
+    "log_vehicle_age": {
+      "mean": 21935.98956287286,
+      "std": 2329.1208136402074
+    },
+    "vehicle_age": {
+      "mean": 19820.83921453968,
+      "std": 2256.8976201036244
+    },
+    "mileage_km": {
+      "mean": 17007.07505647938,
+      "std": 2389.3862967235023
+    },
+    "reg_gap": {
+      "mean": 15011.880195452766,
+      "std": 1439.99872558257
+    },
+    "power_mirrors": {
+      "mean": 10361.453814000073,
+      "std": 2361.032214269155
+    },
+    "mileage_per_year": {
+      "mean": 10127.443222855029,
+      "std": 1543.9533790025005
+    },
+    "power_shutters": {
+      "mean": 7454.811769192864,
+      "std": 2005.8135887962878
+    },
+    "log_mileage_km": {
+      "mean": 5408.174093604207,
+      "std": 1081.9880640820381
+    },
+    "is_reconditioned": {
+      "mean": 3156.199923566281,
+      "std": 495.7087855750185
+    },
+    "confidence": {
+      "mean": 1309.1473513270696,
+      "std": 691.8725691370952
+    },
+    "body_score": {
+      "mean": 792.4167798327109,
+      "std": 685.988098526072
+    },
+    "fault_class": {
+      "mean": -603.5794008163606,
+      "std": 776.0913155323385
+    }
+  },
+  "sensitivity": {
+    "reference_vehicle": {
+      "maf_year": 2015,
+      "vehicle_age": 11,
+      "mileage_km": 100000,
+      "previous_owners": 2,
+      "is_reconditioned": 0,
+      "power_shutters": 1,
+      "power_mirrors": 0,
+      "reg_gap": 0,
+      "fault_class": "healthy",
+      "confidence": 1.0,
+      "body_score": 100
+    },
+    "reference_price_lkr": 3727063.424994915,
+    "body_score": [
+      {
+        "score": 40,
+        "pred_lkr": 3681210.2608010382,
+        "model_drop_lkr": 45853.16419387655,
+        "rule_deduction_lkr": 52500.0
+      },
+      {
+        "score": 45,
+        "pred_lkr": 3739743.8547005435,
+        "model_drop_lkr": -12680.42970562866,
+        "rule_deduction_lkr": 52500.0
+      },
+      {
+        "score": 50,
+        "pred_lkr": 3680129.935270743,
+        "model_drop_lkr": 46933.48972417181,
+        "rule_deduction_lkr": 52500.0
+      },
+      {
+        "score": 55,
+        "pred_lkr": 3690921.1366058136,
+        "model_drop_lkr": 36142.28838910116,
+        "rule_deduction_lkr": 52500.0
+      },
+      {
+        "score": 60,
+        "pred_lkr": 3695182.107445778,
+        "model_drop_lkr": 31881.317549136933,
+        "rule_deduction_lkr": 17500.0
+      },
+      {
+        "score": 65,
+        "pred_lkr": 3700516.92514833,
+        "model_drop_lkr": 26546.49984658463,
+        "rule_deduction_lkr": 17500.0
+      },
+      {
+        "score": 70,
+        "pred_lkr": 3694035.7606006227,
+        "model_drop_lkr": 33027.66439429205,
+        "rule_deduction_lkr": 17500.0
+      },
+      {
+        "score": 75,
+        "pred_lkr": 3703857.0227836105,
+        "model_drop_lkr": 23206.40221130429,
+        "rule_deduction_lkr": 17500.0
+      },
+      {
+        "score": 80,
+        "pred_lkr": 3714604.181314202,
+        "model_drop_lkr": 12459.243680712767,
+        "rule_deduction_lkr": 0.0
+      },
+      {
+        "score": 85,
+        "pred_lkr": 3709043.41939076,
+        "model_drop_lkr": 18020.005604154896,
+        "rule_deduction_lkr": 0.0
+      },
+      {
+        "score": 90,
+        "pred_lkr": 3714024.587404168,
+        "model_drop_lkr": 13038.837590746582,
+        "rule_deduction_lkr": 0.0
+      },
+      {
+        "score": 95,
+        "pred_lkr": 3716686.46028125,
+        "model_drop_lkr": 10376.964713664725,
+        "rule_deduction_lkr": 0.0
+      },
+      {
+        "score": 100,
+        "pred_lkr": 3727063.4249949153,
+        "model_drop_lkr": -4.656612873077393e-10,
+        "rule_deduction_lkr": 0.0
+      }
+    ],
+    "fault_class": [
+      {
+        "fault": "healthy",
+        "confidence": 1.0,
+        "pred_lkr": 3727063.424994914,
+        "model_drop_lkr": 9.313225746154785e-10,
+        "rule_deduction_lkr": 0.0
+      },
+      {
+        "fault": "knocking",
+        "confidence": 0.9,
+        "pred_lkr": 3704267.740264633,
+        "model_drop_lkr": 22795.684730281588,
+        "rule_deduction_lkr": 54000.0
+      },
+      {
+        "fault": "misfiring",
+        "confidence": 0.9,
+        "pred_lkr": 3700977.0122391554,
+        "model_drop_lkr": 26086.412755759433,
+        "rule_deduction_lkr": 14850.0
+      },
+      {
+        "fault": "tappet",
+        "confidence": 0.9,
+        "pred_lkr": 3697312.476133821,
+        "model_drop_lkr": 29750.948861093726,
+        "rule_deduction_lkr": 10350.0
+      },
+      {
+        "fault": "rotational_imbalance",
+        "confidence": 0.9,
+        "pred_lkr": 3694149.4040238466,
+        "model_drop_lkr": 32914.02097106818,
+        "rule_deduction_lkr": 17100.0
+      },
+      {
+        "fault": "battery_fault",
+        "confidence": 0.9,
+        "pred_lkr": 3690513.2033684915,
+        "model_drop_lkr": 36550.2216264233,
+        "rule_deduction_lkr": 29475.0
+      }
+    ],
+    "mileage": [
+      {
+        "mileage_km": 40000,
+        "pred_lkr": 3862833.19879786
+      },
+      {
+        "mileage_km": 60000,
+        "pred_lkr": 3989690.3913430274
+      },
+      {
+        "mileage_km": 80000,
+        "pred_lkr": 3812492.7048168327
+      },
+      {
+        "mileage_km": 100000,
+        "pred_lkr": 3727063.4249949143
+      },
+      {
+        "mileage_km": 120000,
+        "pred_lkr": 3716393.7140518553
+      },
+      {
+        "mileage_km": 140000,
+        "pred_lkr": 3733900.3180768937
+      },
+      {
+        "mileage_km": 160000,
+        "pred_lkr": 3717790.6085892343
+      },
+      {
+        "mileage_km": 180000,
+        "pred_lkr": 3594977.5132892374
+      },
+      {
+        "mileage_km": 200000,
+        "pred_lkr": 3655493.8511221507
+      }
+    ],
+    "year": [
+      {
+        "maf_year": 2012,
+        "pred_lkr": 3464421.786259828
+      },
+      {
+        "maf_year": 2013,
+        "pred_lkr": 3530534.3395781824
+      },
+      {
+        "maf_year": 2014,
+        "pred_lkr": 3536313.909342483
+      },
+      {
+        "maf_year": 2015,
+        "pred_lkr": 3727063.4249949143
+      },
+      {
+        "maf_year": 2016,
+        "pred_lkr": 3844742.6943639545
+      },
+      {
+        "maf_year": 2017,
+        "pred_lkr": 4309079.101421931
+      }
+    ]
+  },
+  "verdict_simulation": {
+    "at_market": {
+      "FAIR_PRICE": 78.25,
+      "GOOD_DEAL": 11.25,
+      "OVERPRICED": 10.5
+    },
+    "plus_10pct": {
+      "OVERPRICED": 86.75,
+      "FAIR_PRICE": 13.0,
+      "GOOD_DEAL": 0.25
+    },
+    "plus_15pct": {
+      "OVERPRICED": 97.5,
+      "FAIR_PRICE": 2.5
+    },
+    "minus_10pct": {
+      "GOOD_DEAL": 90.75,
+      "FAIR_PRICE": 9.25
+    },
+    "minus_15pct": {
+      "GOOD_DEAL": 99.75,
+      "FAIR_PRICE": 0.25
+    }
+  },
+  "real_only_cv": {
+    "Linear regression": {
+      "mae_lkr": 151929.43782751096,
+      "rmse_lkr": 198507.68104501616,
+      "r2": 0.5147674814442267,
+      "mape_pct": 4.088298023605388,
+      "within_2_5_pct": 39.349112426035504,
+      "within_5_pct": 71.00591715976331,
+      "within_10_pct": 94.37869822485207,
+      "max_abs_err_lkr": 859053.7684536331
+    },
+    "Random Forest": {
+      "mae_lkr": 153895.15431434588,
+      "rmse_lkr": 196358.43764381867,
+      "r2": 0.5252178291101333,
+      "mape_pct": 4.138719923462688,
+      "within_2_5_pct": 36.68639053254438,
+      "within_5_pct": 69.23076923076923,
+      "within_10_pct": 94.0828402366864,
+      "max_abs_err_lkr": 779633.3333333436
+    },
+    "Gradient Boosting": {
+      "mae_lkr": 159953.07548639944,
+      "rmse_lkr": 202034.62877758854,
+      "r2": 0.49737175026730407,
+      "mape_pct": 4.293119865530422,
+      "within_2_5_pct": 35.798816568047336,
+      "within_5_pct": 64.49704142011834,
+      "within_10_pct": 94.0828402366864,
+      "max_abs_err_lkr": 814591.6754790896
+    },
+    "XGBoost": {
+      "mae_lkr": 166039.42193928556,
+      "rmse_lkr": 213124.971759763,
+      "r2": 0.44067537048466654,
+      "mape_pct": 4.459873656406783,
+      "within_2_5_pct": 36.3905325443787,
+      "within_5_pct": 63.905325443786985,
+      "within_10_pct": 92.3076923076923,
+      "max_abs_err_lkr": 762016.2963867188
+    },
+    "LightGBM": {
+      "mae_lkr": 165637.02842497439,
+      "rmse_lkr": 210275.8969748567,
+      "r2": 0.4555296249666634,
+      "mape_pct": 4.453649971453222,
+      "within_2_5_pct": 34.023668639053255,
+      "within_5_pct": 64.49704142011834,
+      "within_10_pct": 92.60355029585799,
+      "max_abs_err_lkr": 839954.4118103411
+    },
+    "Stacking ensemble": {
+      "mae_lkr": 154913.75684506877,
+      "rmse_lkr": 197947.9292151548,
+      "r2": 0.5175001399105106,
+      "mape_pct": 4.171501798053962,
+      "within_2_5_pct": 38.16568047337278,
+      "within_5_pct": 67.75147928994083,
+      "within_10_pct": 93.78698224852072,
+      "max_abs_err_lkr": 751244.5727124941
+    },
+    "Year-mean baseline": {
+      "mae_lkr": 158573.89941994133,
+      "rmse_lkr": 200230.70266302009,
+      "r2": 0.5063074098841991,
+      "mape_pct": 4.255866689757894,
+      "within_2_5_pct": 37.573964497041416,
+      "within_5_pct": 67.45562130177515,
+      "within_10_pct": 93.19526627218934,
+      "max_abs_err_lkr": 606914.893617021
+    }
+  },
+  "split_comparison": {
+    "regenerated_matches_saved_file": true,
+    "random_5fold": {
+      "mae_lkr": 119562.10096790137,
+      "rmse_lkr": 152572.16208443994,
+      "r2": 0.7223374749041553,
+      "mape_pct": 3.2291902737388147,
+      "within_2_5_pct": 48.0,
+      "within_5_pct": 78.3,
+      "within_10_pct": 97.89999999999999,
+      "max_abs_err_lkr": 645678.4983127734,
+      "fold_mae_lkr": [
+        121821.97581798224,
+        114882.08327032527,
+        120119.1783103754,
+        118782.78599358539,
+        122204.4814472385
+      ],
+      "fold_mae_std_lkr": 2642.326307628433
+    },
+    "grouped_5fold": {
+      "mae_lkr": 157669.0982918021,
+      "rmse_lkr": 198037.01548548357,
+      "r2": 0.5322008665483554,
+      "mape_pct": 4.24400552809854,
+      "within_2_5_pct": 36.3,
+      "within_5_pct": 65.9,
+      "within_10_pct": 94.0,
+      "max_abs_err_lkr": 738341.4228625246,
+      "fold_mae_lkr": [
+        153075.40152198117,
+        157946.1720869893,
+        151259.83838145412,
+        178511.79145667495,
+        147552.288011911
+      ],
+      "fold_mae_std_lkr": 10945.548328921528
+    },
+    "holdout_rows_with_source_in_train_pct": 99.75,
+    "rows_per_source_mean": 5.9171597633136095
+  },
+  "functional_cases": [
+    {
+      "id": "TC-01",
+      "description": "Healthy car listed near model value",
+      "inputs": {
+        "listed_price_million": 3.95
+      },
+      "verdict": "FAIR_PRICE",
+      "fair_value_lkr": 3774000,
+      "recommended_offer_lkr": 3770000,
+      "negotiation_min_lkr": 3774000,
+      "negotiation_max_lkr": 3774000,
+      "body_damage_category": "none",
+      "engine_deduction_lkr": 0,
+      "body_deduction_lkr": 0,
+      "vin_warning": null,
+      "explanation": "This vehicle is overpriced by LKR 176,000 relative to its fair market value of LKR 3,774,000.",
+      "verdict_message": "This vehicle is listed at approximately fair market value."
+    },
+    {
+      "id": "TC-02",
+      "description": "Same car listed well above value",
+      "inputs": {
+        "listed_price_million": 4.6
+      },
+      "verdict": "OVERPRICED",
+      "fair_value_lkr": 3774000,
+      "recommended_offer_lkr": 3770000,
+      "negotiation_min_lkr": 3774000,
+      "negotiation_max_lkr": 3774000,
+      "body_damage_category": "none",
+      "engine_deduction_lkr": 0,
+      "body_deduction_lkr": 0,
+      "vin_warning": null,
+      "explanation": "This vehicle is overpriced by LKR 826,000 relative to its fair market value of LKR 3,774,000.",
+      "verdict_message": "This vehicle is listed LKR 826,000 above fair market value."
+    },
+    {
+      "id": "TC-03",
+      "description": "Same car listed well below value",
+      "inputs": {
+        "listed_price_million": 3.3
+      },
+      "verdict": "GOOD_DEAL",
+      "fair_value_lkr": 3774000,
+      "recommended_offer_lkr": 3300000,
+      "negotiation_min_lkr": 3300000,
+      "negotiation_max_lkr": 3300000,
+      "body_damage_category": "none",
+      "engine_deduction_lkr": 0,
+      "body_deduction_lkr": 0,
+      "vin_warning": null,
+      "explanation": "This is a good deal. The listed price is LKR 474,000 below fair market value. You may proceed at the listed price.",
+      "verdict_message": "This vehicle is listed LKR 474,000 below fair market value."
+    },
+    {
+      "id": "TC-04",
+      "description": "Knocking fault, body 82, listed 3.89 M",
+      "inputs": {
+        "listed_price_million": 3.89,
+        "fault_class": "knocking",
+        "confidence": 0.87,
+        "body_score": 82
+      },
+      "verdict": "OVERPRICED",
+      "fair_value_lkr": 3687000,
+      "recommended_offer_lkr": 3680000,
+      "negotiation_min_lkr": 3646700,
+      "negotiation_max_lkr": 3711700,
+      "body_damage_category": "minor",
+      "engine_deduction_lkr": 52200,
+      "body_deduction_lkr": 17500,
+      "vin_warning": null,
+      "explanation": "This vehicle is overpriced by LKR 203,000 relative to its fair market value of LKR 3,687,000. The knocking engine fault requires repairs estimated between LKR 35,000-85,000. Body condition is rated as minor damage, adding LKR 17,500 in estimated costs.",
+      "verdict_message": "This vehicle is listed LKR 203,000 above fair market value."
+    },
+    {
+      "id": "TC-05",
+      "description": "Altered VIN",
+      "inputs": {
+        "listed_price_million": 3.8,
+        "vin_status": "altered"
+      },
+      "verdict": "DO_NOT_BUY",
+      "fair_value_lkr": null,
+      "recommended_offer_lkr": null,
+      "negotiation_min_lkr": null,
+      "negotiation_max_lkr": null,
+      "body_damage_category": null,
+      "engine_deduction_lkr": null,
+      "body_deduction_lkr": null,
+      "vin_warning": null,
+      "explanation": null,
+      "verdict_message": "This vehicle VIN has been altered. This is a serious legal risk. Do not purchase."
+    },
+    {
+      "id": "TC-06",
+      "description": "VIN needs review",
+      "inputs": {
+        "listed_price_million": 3.95,
+        "vin_status": "need review"
+      },
+      "verdict": "FAIR_PRICE",
+      "fair_value_lkr": 3774000,
+      "recommended_offer_lkr": 3770000,
+      "negotiation_min_lkr": 3774000,
+      "negotiation_max_lkr": 3774000,
+      "body_damage_category": "none",
+      "engine_deduction_lkr": 0,
+      "body_deduction_lkr": 0,
+      "vin_warning": "VIN authenticity could not be fully verified. Proceed with caution and manual inspection.",
+      "explanation": "This vehicle is overpriced by LKR 176,000 relative to its fair market value of LKR 3,774,000. The VIN status is non-original, which is a major risk factor.",
+      "verdict_message": "This vehicle is listed at approximately fair market value."
+    },
+    {
+      "id": "TC-07",
+      "description": "Severe body damage (score 45)",
+      "inputs": {
+        "listed_price_million": 3.95,
+        "body_score": 45
+      },
+      "verdict": "OVERPRICED",
+      "fair_value_lkr": 3709000,
+      "recommended_offer_lkr": 3710000,
+      "negotiation_min_lkr": 3649000,
+      "negotiation_max_lkr": 3769000,
+      "body_damage_category": "severe",
+      "engine_deduction_lkr": 0,
+      "body_deduction_lkr": 140000,
+      "vin_warning": null,
+      "explanation": "This vehicle is overpriced by LKR 241,000 relative to its fair market value of LKR 3,709,000. Body condition is rated as severe damage, adding LKR 140,000 in estimated costs.",
+      "verdict_message": "This vehicle is listed LKR 241,000 above fair market value."
+    },
+    {
+      "id": "TC-08",
+      "description": "Unknown fault label",
+      "inputs": {
+        "listed_price_million": 3.95,
+        "fault_class": "overheating",
+        "confidence": 0.8
+      },
+      "verdict": "OVERPRICED",
+      "fair_value_lkr": 3761000,
+      "recommended_offer_lkr": 3760000,
+      "negotiation_min_lkr": 3761000,
+      "negotiation_max_lkr": 3761000,
+      "body_damage_category": "none",
+      "engine_deduction_lkr": 0,
+      "body_deduction_lkr": 0,
+      "vin_warning": null,
+      "explanation": "This vehicle is overpriced by LKR 189,000 relative to its fair market value of LKR 3,761,000. The overheating engine fault requires repairs estimated between LKR 0-0.",
+      "verdict_message": "This vehicle is listed LKR 189,000 above fair market value."
+    }
+  ],
+  "latency_ms_inprocess": {
+    "n": 200,
+    "mean": 96.92790850036545,
+    "median": 93.95215000404278,
+    "p95": 113.26539499714272,
+    "max": 129.89969999762252
+  },
+  "api_cases": [
+    {
+      "id": "API-01",
+      "description": "GET /api/v1/health",
+      "expected_status": 200,
+      "actual_status": 200,
+      "passed": true,
+      "verdict": null,
+      "error": null
+    },
+    {
+      "id": "API-02",
+      "description": "POST /valuate without Authorization header",
+      "expected_status": 401,
+      "actual_status": 401,
+      "passed": true,
+      "verdict": null,
+      "error": "Missing or invalid authorization header"
+    },
+    {
+      "id": "API-03",
+      "description": "POST /valuate with wrong token",
+      "expected_status": 401,
+      "actual_status": 401,
+      "passed": true,
+      "verdict": null,
+      "error": "Unauthorized: Invalid API token"
+    },
+    {
+      "id": "API-04",
+      "description": "POST /valuate with valid token and full body",
+      "expected_status": 200,
+      "actual_status": 200,
+      "passed": true,
+      "verdict": "OVERPRICED",
+      "error": null
+    },
+    {
+      "id": "API-05",
+      "description": "POST /valuate with mileage_km missing",
+      "expected_status": 400,
+      "actual_status": 400,
+      "passed": true,
+      "verdict": null,
+      "error": "Missing required field: mileage_km"
+    },
+    {
+      "id": "API-06",
+      "description": "POST /valuate with listed_price_million missing",
+      "expected_status": 400,
+      "actual_status": 400,
+      "passed": true,
+      "verdict": null,
+      "error": "Missing required field: listed_price_million"
+    },
+    {
+      "id": "API-07",
+      "description": "POST /valuate with non-JSON body",
+      "expected_status": 400,
+      "actual_status": 400,
+      "passed": true,
+      "verdict": null,
+      "error": "Request must be JSON"
+    },
+    {
+      "id": "API-08",
+      "description": "POST /valuate with non-numeric price",
+      "expected_status": 400,
+      "actual_status": 400,
+      "passed": true,
+      "verdict": null,
+      "error": "Data format error: could not convert string to float: 'abc'"
+    },
+    {
+      "id": "API-09",
+      "description": "POST /valuate with altered VIN",
+      "expected_status": 200,
+      "actual_status": 200,
+      "passed": true,
+      "verdict": "DO_NOT_BUY",
+      "error": null
+    },
+    {
+      "id": "API-10",
+      "description": "GET unknown route",
+      "expected_status": 404,
+      "actual_status": 404,
+      "passed": true,
+      "verdict": null,
+      "error": "Resource not found"
+    },
+    {
+      "id": "API-11",
+      "description": "POST /valuate with only the seven vehicle fields and price (defaults used)",
+      "expected_status": 200,
+      "actual_status": 200,
+      "passed": true,
+      "verdict": "FAIR_PRICE",
+      "error": null
+    }
+  ],
+  "latency_ms_api": {
+    "n": 200,
+    "mean": 97.00466850030352,
+    "median": 94.78434999618912,
+    "p95": 109.83558001316851,
+    "max": 148.80209999682847
+  },
+  "model_file_mb": 29.167086,
+  "residuals": {
+    "mean_lkr": 3423.3336942839323,
+    "std_lkr": 156378.1622316166,
+    "p05_lkr": -275917.4563333146,
+    "p95_lkr": 258186.22816392008
+  }
+}

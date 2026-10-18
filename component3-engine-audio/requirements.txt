@@ -12,3 +12,4 @@ python-dotenv
 setuptools<70
 flasgger
 gunicorn
+imageio-ffmpeg

@@ -5,7 +5,14 @@ pycache/
 venv/
 env/
 .venv/
-models/saved/
+models/saved/*
+# The deployed image is built from git, so the files the API loads must be committed.
+!models/saved/market_model.joblib
+!models/saved/market_model_meta.json
+!models/saved/market_model_report.json
+# Older stacking model, kept committed for the earlier Azure image
+!models/saved/advanced_best_model.joblib
+!models/saved/advanced_feature_names.json
 data/processed/
 .DS_Store
 Thumbs.db

@@ -158,9 +158,21 @@ def valuate_vehicle():
             vin_status:
               type: string
               example: original
+            mhs_score:
+              type: number
+              example: 92
+              description: Mechanical Health Score from the engine component (preferred over fault_class)
+            make:
+              type: string
+              example: Suzuki
+            model:
+              type: string
+              example: Alto
     responses:
       200:
-        description: Valuation successful
+        description: Valuation result. status is "success", "warning" (altered VIN) or "out_of_scope" (car the model can't value)
+      400:
+        description: Missing or invalid input
     """
     if not request.is_json:
         abort(400, description="Request must be JSON")
@@ -180,15 +192,19 @@ def valuate_vehicle():
         
     try:
         # Build vehicle_input dictionary
-        vehicle_input = {field: data[field] for field in required_fields}
+        vehicle_input = {field: int(data[field]) for field in required_fields}
         listed_price_million = float(data['listed_price_million'])
-        
-        # Extract optional fields from other components
-        fault_class = data.get('fault_class', 'healthy')
-        confidence = float(data.get('confidence', 1.0))
-        body_score = int(data.get('body_score', 100))
-        vin_status = data.get('vin_status', 'original')
-        
+        if listed_price_million <= 0:
+            raise ValueError("listed_price_million must be positive")
+
+        # Optional fields from other components (null is treated as "not provided")
+        fault_class = data.get('fault_class') or 'healthy'
+        confidence = float(data.get('confidence') if data.get('confidence') is not None else 1.0)
+        body_score = int(data.get('body_score') if data.get('body_score') is not None else 100)
+        vin_status = data.get('vin_status') or 'unknown'
+        mhs_score = data.get('mhs_score')
+        mhs_score = float(mhs_score) if mhs_score is not None else None
+
         # Perform prediction using preloaded models
         result = valuate(
             vehicle_input=vehicle_input,
@@ -197,12 +213,15 @@ def valuate_vehicle():
             confidence=confidence,
             body_score=body_score,
             vin_status=vin_status,
-            preloaded_assets=PRELOADED_ASSETS
+            preloaded_assets=PRELOADED_ASSETS,
+            mhs_score=mhs_score,
+            make=data.get('make'),
+            model_name=data.get('model'),
         )
         
         return jsonify(result), 200
         
-    except ValueError as ve:
+    except (ValueError, TypeError) as ve:
          abort(400, description=f"Data format error: {str(ve)}")
     except Exception as e:
         print(f"Error during valuation: {str(e)}")

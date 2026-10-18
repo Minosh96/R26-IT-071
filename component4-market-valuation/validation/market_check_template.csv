@@ -1,0 +1,2 @@
+car_id,source,listing_url,date_checked,maf_year,reg_year,mileage_km,previous_owners,is_reconditioned,power_shutters,power_mirrors,asking_price_million,accepted_price_million,notes
+EXAMPLE-1,riyasewana.lk,https://riyasewana.lk/...,2026-10-16,2015,2015,98000,2,0,1,0,3.95,,delete this example row

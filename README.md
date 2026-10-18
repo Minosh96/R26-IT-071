@@ -37,9 +37,9 @@ This is our mechanical health component. Instead of expensive tools, we use a sm
 **Directory:** `component4-market-valuation/`
 
 This is the final brain of our project that brings all the data together.
-*   **What we did:** We developed a valuation engine that takes the vehicle's basic details (like age and mileage) and combines them with the results from our other 3 components (VIN status, Body score, and Engine health).
-*   **Result:** It predicts the most accurate market price for the car based on its actual current condition.
-*   **Tech Stack:** **Flask** API with Scikit-learn models, including a **Swagger UI** for testing the endpoints.
+*   **What we did:** The valuation has two clearly separated parts. (1) A machine learning **market price** model trained only on real Suzuki Alto listings (age, mileage, owners, registration gap, features, listing month). (2) A **condition adjustment** from our field survey of 5 sellers and repair centres: engine repair cost from the engine health score, body repair cost from the body score, and a risk discount when the VIN can't be confirmed.
+*   **Result:** A fair price range, a verdict (good deal / fair / overpriced) tied to the model's measured error, a recommended offer and negotiation range, and a line-by-line explanation of what moved the price. Cars outside the training data are refused instead of guessed.
+*   **Tech Stack:** **Flask** API with Scikit-learn models, including a **Swagger UI** for testing the endpoints. Details: [component4-market-valuation/README.md](component4-market-valuation/README.md).
 
 ---
 
@@ -52,7 +52,7 @@ We have carefully evaluated each of our models to ensure they provide reliable r
 | **C1: VIN Auth** | ResNet50 (fine tuned) | **82.69%** | 300+ Images | Real VIN images combined with synthetically generated tampering patterns (blur, shift, noise). |
 | **C2: Body Analysis** | Hybrid Ensemble (MobileNetV3 + EffNet) | **86.98%** | 500+ Images | Sourced from a demo dataset and expanded using rotation, flip, and crop augmentations. |
 | **C3: Engine Health** | YAMNet + SVM Classifier | **90.06%** | 400+ Clips | 16 original healthy recordings expanded into 5 fault classes using a mathematical **Fault Generator**. |
-| **C4: Valuation** | Stacking Ensemble (RF, XGB, LGBM) | **96.70%** | 2,000+ Records | A synthetic holistic dataset generated to cover various vehicle conditions and market price scenarios. |
+| **C4: Valuation** | Constrained linear + gradient boosting | **3.8% average error** (LKR ~141,000) on unseen real listings; year-average baseline 4.1% | 553 real listings | Real Suzuki Alto listings 2010–2018 (riyasewana.lk, Jan–Oct 2026). No synthetic data. Price prediction is reported as average error, not accuracy. |
 
 ---
 
@@ -82,10 +82,14 @@ We experimented with traditional audio processing versus modern deep learning fe
 *   **YAMNet + SVM (Baseline):** 90.06% accuracy. (Google's YAMNet provided much richer acoustic features than hand-crafted MFCCs).
 *   **YAMNet + SVM (Optimized):** **92.50% accuracy**. (By using **GridSearchCV** to optimize the SVM's C and Gamma parameters, we significantly improved fault detection precision).
 
-### Component 4: Single Regressors vs. Stacking Ensemble
-For price prediction, we evaluated several regression models before choosing a stacking strategy.
-*   **Random Forest / XGBoost:** 92-94% accuracy.
-*   **Stacking Regressor (Winner):** **96.70% accuracy**. (By stacking RF, XGB, and LightGBM with a Ridge final estimator, we minimized the Mean Absolute Error to ~121,000 LKR).
+### Component 4: Market Price Models on Real Listings
+All numbers are average error on real listings the model never trained on (grouped 5-fold cross-validation, so the same car is never in both training and testing):
+*   **Year-average baseline:** LKR 154,586 (4.10%).
+*   **Linear regression:** LKR 144,445 (3.84%).
+*   **Random Forest / Gradient Boosting / XGBoost:** LKR 143,700–145,000 (3.82–3.85%).
+*   **Hybrid, constrained linear + boosting (chosen):** **LKR 140,799 (3.76%)**. Price can never rise with mileage, owners or age, and the linear part follows the market trend over time.
+
+An earlier version reported "96.7% accuracy" on 2,000 generated rows. Those prices were produced by a formula, so the figure measured how well the model relearned that formula, not how well it priced real cars. It was replaced by the evaluation above.
 
 ---
 

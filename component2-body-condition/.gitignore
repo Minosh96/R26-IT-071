@@ -15,6 +15,7 @@ datasets/
 !damage_capped_weights.npz
 !part_only_weights.npz
 !vehicle_view_weights.weights.h5
+!vehicle_view_weights_v2.weights.h5
 
 # App Directories
 outputs/

@@ -2,7 +2,10 @@
 inference/view_validator.py
 ===========================
 Vehicle View Classifier – MobileNetV3Small (5 classes)
-Trained weights: vehicle_view_weights.weights.h5
+Trained weights: vehicle_view_weights_v2.weights.h5
+  (vehicle_view_weights.weights.h5 converted to the current Keras weights
+  layout; the original was saved on Windows with '\' in its group names and
+  a different layer order, so no Keras version could load it.)
 
 Classes (in training order):
     0 – Front
@@ -125,7 +128,7 @@ def _build_view_model() -> Model:
 
 # ── Weight loading ────────────────────────────────────────────────────────────
 
-def _find_weights_file(filename: str = "vehicle_view_weights.weights.h5") -> str:
+def _find_weights_file(filename: str = "vehicle_view_weights_v2.weights.h5") -> str:
     """Search for the weights file in standard locations."""
     search_paths = [
         _COMPONENT_DIR / filename,
@@ -303,14 +306,14 @@ def validate_view(
 
     if is_correct and not is_uncertain:
         message = (
-            f"Correct view detected: {predicted_label} "
+            f"Correct view detected: {expected_label} "
             f"({confidence:.1f}% confidence)."
         )
         is_valid = True
     elif is_correct and is_uncertain:
         message = (
             f"Low confidence ({confidence:.1f}%). "
-            f"This looks like {predicted_label}, but the angle is unclear. "
+            f"This looks like {expected_label}, but the angle is unclear. "
             f"Please ensure the vehicle is clearly framed."
         )
         is_valid = True
