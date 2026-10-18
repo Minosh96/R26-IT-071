@@ -181,7 +181,8 @@ async def validate_single_view(
     try:
         image_bytes = await image.read()
         from inference.view_validator import validate_view
-        result = validate_view(view_model, image_bytes, expected_view)
+        part_model = BODY_MODELS.get("part_model")
+        result = validate_view(view_model, image_bytes, expected_view, part_model=part_model)
         return JSONResponse(content=result)
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
