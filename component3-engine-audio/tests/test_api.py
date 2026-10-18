@@ -160,6 +160,13 @@ def test_full_recording_uses_the_app_stage_times(client, auth, full_recordings):
     assert stages["audio_acceleration"]["start"] == round(idle_end, 2)
 
 
+def test_full_recording_healthy_with_late_start(client, auth, full_recordings):
+    # Used to come back "knocking": the idle stage mixed the start's tail with idle.
+    body = post_full(client, auth, full_recordings["late_start"]).get_json()
+    assert body["fault_class"] == "healthy"
+    assert body["color_indicator"] == "green"
+
+
 def test_full_recording_fault_in_one_stage(client, auth, full_recordings):
     body = post_full(client, auth, full_recordings["knocking"]).get_json()
     assert body["fault_class"] == "knocking"
