@@ -70,6 +70,8 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
   /// here with the guided timings (an uploaded file uses the server defaults).
   String _audioPath = '';
   bool _recordedInApp = false;
+  /// Name of a file picked with Upload, shown so the user can check it's the right one.
+  String? _uploadedFileName;
 
   /// Error from the server or a local check, shown on the card.
   String? _errorMessage;
@@ -134,6 +136,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
         _elapsed = Duration.zero;
         _audioPath = '';
         _recordedInApp = true;
+        _uploadedFileName = null;
         _errorMessage = null;
         _warnings = [];
       });
@@ -185,6 +188,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
       final result = await FilePicker.platform.pickFiles(type: FileType.any);
       if (result == null || result.files.single.path == null) return;
       final path = result.files.single.path!;
+      final fileName = result.files.single.name;
 
       final validationError = validateFileExtension(path, allowedAudioExtensions, 'WAV, MP3, M4A, or MP4 audio');
       if (validationError != null) {
@@ -195,6 +199,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
       setState(() {
         _audioPath = path;
         _recordedInApp = false;
+        _uploadedFileName = fileName;
         _elapsed = Duration.zero;
         _errorMessage = null;
         _warnings = [];
@@ -216,6 +221,7 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
       _isPlaying = false;
       _elapsed = Duration.zero;
       _audioPath = '';
+      _uploadedFileName = null;
       _errorMessage = null;
       _warnings = [];
     });
@@ -389,6 +395,26 @@ class _AudioRecordingScreenState extends State<AudioRecordingScreen> with Single
                               style: const TextStyle(
                                   color: AppColors.textWhite, fontSize: 18, fontWeight: FontWeight.bold),
                             ),
+                            if (hasRecording && !_recordedInApp && _uploadedFileName != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.audio_file, color: AppColors.textGray, size: 18),
+                                    const SizedBox(width: 6),
+                                    Flexible(
+                                      child: Text(
+                                        _uploadedFileName!,
+                                        textAlign: TextAlign.center,
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(color: AppColors.textGray, fontSize: 13),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             if (!hasRecording)
                               const Padding(
                                 padding: EdgeInsets.only(top: 4),

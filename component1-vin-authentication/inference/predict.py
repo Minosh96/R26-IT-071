@@ -38,7 +38,7 @@ def _get_model():
     return _model
 
 
-def predict_vin(image_bytes):
+def predict_vin(image_bytes, detected_number=None):
     nparr = np.frombuffer(image_bytes, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
@@ -51,7 +51,7 @@ def predict_vin(image_bytes):
 
     # The tampering model can only answer "original" or "altered", so first
     # check that the photo actually looks like a VIN / chassis number plate.
-    is_vin, vin_score = looks_like_vin(img)
+    is_vin, vin_score = looks_like_vin(img, detected_number)
     if not is_vin:
         return {
             "label": "Not a VIN",

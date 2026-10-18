@@ -180,7 +180,7 @@ class _VinScanScreenState extends State<VinScanScreen> {
 
     setState(() => _isAnalyzing = true);
 
-    final result = await _apiService.scanVin(File(_capturedImagePath!));
+    final result = await _apiService.scanVin(File(_capturedImagePath!), detectedNumber: _scannedValue);
 
     if (!mounted) return;
     setState(() {
