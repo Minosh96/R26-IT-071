@@ -66,8 +66,13 @@ def full_recordings(tmp_path_factory):
     knock = load("knocking/Engine knock 6.wav", 10)
     start_end, idle_end = len(start) / sr, (len(start) + len(idle)) / sr
     noise = 0.3 * np.random.default_rng(1).standard_normal(sr * 25)
+    # The driver turns the key 4 s in, so the app's fixed 8 s / 20 s prompt
+    # times cut the end of the start into the idle stage.
+    quiet = 0.003 * np.random.default_rng(3).standard_normal(sr * 4)
+    late_idle = idle[:int(sr * 20) - len(quiet) - len(start)]
     clips = {
         "healthy": (np.concatenate([start, idle, revs]), start_end, idle_end),
+        "late_start": (np.concatenate([quiet, start, late_idle, revs]), 8.0, 20.0),
         "knocking": (np.concatenate([start, idle, knock]), start_end, idle_end),
         "no_start": (np.concatenate([idle, revs]), None, None),
         "too_short": (np.concatenate([start, idle[:sr * 4]]), None, None),

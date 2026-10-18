@@ -310,8 +310,30 @@ def get_color_indicator(mhs_score):
 
 def _health_from_embedding(embedding, svm_model, scaler, label_map, duration):
     """Run the SVM health classifier on a YAMNet embedding and build the result dict."""
-    embedding_scaled = scaler.transform([embedding])
-    probs = svm_model.predict_proba(embedding_scaled)[0]
+    probs = svm_model.predict_proba(scaler.transform([embedding]))[0]
+    return _health_from_probs(probs, label_map, duration)
+
+
+# Idle and revving stages of a single recording are scored in ~4 s windows
+# (YAMNet frames hop 0.48 s) and the SVM probabilities averaged. Averaging the
+# embedding over the whole 12 s stage instead mixes two engine states whenever
+# the driver is a few seconds off the prompts (start tail + idle, or idle +
+# first revs); the classifier was trained on single-state clips and read those
+# mixes as "knocking", turning healthy cars red. Continuous faults still win
+# every window.
+STAGE_WINDOW_FRAMES = 7
+STAGE_WINDOW_HOP = 4
+
+
+def _windowed_probs(embeddings, svm_model, scaler):
+    """Mean SVM probabilities over overlapping windows of YAMNet frame embeddings."""
+    starts = range(0, max(len(embeddings) - STAGE_WINDOW_FRAMES, 0) + 1, STAGE_WINDOW_HOP)
+    pooled = np.array([embeddings[s:s + STAGE_WINDOW_FRAMES].mean(axis=0) for s in starts])
+    return svm_model.predict_proba(scaler.transform(pooled)).mean(axis=0)
+
+
+def _health_from_probs(probs, label_map, duration):
+    """Build the health result dict from SVM class probabilities."""
     pred_idx = int(np.argmax(probs))
     confidence = float(np.max(probs))
 
@@ -499,9 +521,15 @@ def analyze_recording(file_path, yamnet_model, svm_model, scaler, label_map,
         segment = audio[int(begin * SAMPLE_RATE):int(end * SAMPLE_RATE)]
         seg_scores, seg_embeddings, _ = yamnet_model(_prepare(segment))
         seg_scores = seg_scores.numpy()
+        seg_embeddings = seg_embeddings.numpy()
         stage = {"valid": True, "code": "OK", "duration": round(end - begin, 2),
                  "start": round(begin, 2), "end": round(end, 2)}
-        stage.update(_health_from_embedding(seg_embeddings.numpy().mean(axis=0), svm_model, scaler,
+        if field == "audio_start":
+            # Kept whole: a start is one short event, and battery faults show in it as a whole.
+            stage.update(_health_from_embedding(seg_embeddings.mean(axis=0), svm_model, scaler,
+                                                label_map, end - begin))
+        else:
+            stage.update(_health_from_probs(_windowed_probs(seg_embeddings, svm_model, scaler),
                                             label_map, end - begin))
         if field == "audio_start":
             heard_start = starting_idx is not None and seg_scores[:, starting_idx].max() >= STAGE_START_HINT
