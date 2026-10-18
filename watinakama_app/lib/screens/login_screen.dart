@@ -60,6 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
         if (_bioAvailable && !_bioEnabled) {
           await _showBiometricDialog();
         }
+        if (!mounted) return;
         Navigator.pushReplacementNamed(context, '/home');
       } else if (result['code'] == 'email-not-verified') {
         Navigator.push(

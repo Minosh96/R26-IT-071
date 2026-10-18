@@ -47,6 +47,25 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_FILE_SIZE_MB * 1024 * 1024
 # Ensure upload directory exists
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+
+def ensure_wav(path):
+    """
+    Phones usually record .m4a (AAC), which librosa cannot decode without a system
+    ffmpeg (the Docker image has one, a Windows dev machine usually doesn't).
+    Convert anything that isn't .wav to 16 kHz mono WAV using the ffmpeg binary
+    bundled with imageio-ffmpeg. Returns the path to analyse.
+    """
+    if pathlib.Path(path).suffix.lower() == ".wav":
+        return path
+    import subprocess
+    import imageio_ffmpeg
+    wav_path = str(pathlib.Path(path).with_suffix(".wav"))
+    subprocess.run(
+        [imageio_ffmpeg.get_ffmpeg_exe(), "-y", "-loglevel", "error", "-i", path, "-ac", "1", "-ar", "16000", wav_path],
+        check=True, capture_output=True,
+    )
+    return wav_path
+
 # --- Global Model Variables ---
 # Load all models once at startup to prevent latency on every request
 YAMNET_MODEL = None
@@ -227,7 +246,18 @@ def analyze_engine_sound():
                 "message": f"File is too small ({size_kb:.0f} KB) and looks empty or corrupt. Please re-record.",
             }
             return
-        file_map[field] = temp_path
+        # Phone formats (.m4a / .mp3 / .mp4) -> WAV so librosa can read them anywhere
+        try:
+            wav_path = ensure_wav(temp_path)
+        except Exception as e:
+            pre_invalid[field] = {
+                "valid": False, "code": "BAD_AUDIO",
+                "message": f"Couldn't read this audio file ({e.__class__.__name__}). Please re-record.",
+            }
+            return
+        if wav_path != temp_path:
+            temp_paths.append(wav_path)
+        file_map[field] = wav_path
 
     # One guided recording covering all three stages (the app's default).
     full = request.files.get('audio_full')

@@ -1,0 +1,54 @@
+{
+  "model": "Hybrid (constrained linear + boosting)",
+  "features": [
+    "maf_year",
+    "age_at_listing",
+    "mileage_km",
+    "km_per_year",
+    "previous_owners",
+    "reg_gap",
+    "is_reconditioned",
+    "power_shutters",
+    "power_mirrors",
+    "listed_months"
+  ],
+  "training_rows": 553,
+  "year_range": [
+    2010,
+    2018
+  ],
+  "market_month": 10,
+  "price_interval": {
+    "level": 0.8,
+    "low_ratio": -0.05726680430081205,
+    "high_ratio": 0.06064129067110138,
+    "low_lkr": -220874.48931740096,
+    "high_lkr": 228649.01260411678,
+    "cv_coverage": 0.7974683544303798
+  },
+  "cv_mae_lkr": 140799.20404171915,
+  "cv_mape_pct": 3.75638320079757,
+  "holdout_mae_lkr": 144638.24048322343,
+  "holdout_mape_pct": 3.8629357524857446,
+  "scope": {
+    "make": "Suzuki",
+    "model": "Alto",
+    "mileage_km": [
+      30000,
+      252100
+    ],
+    "previous_owners": [
+      1,
+      8
+    ]
+  },
+  "reference_vehicle": {
+    "maf_year": 2015,
+    "reg_gap": 0,
+    "mileage_km": 112000,
+    "previous_owners": 2,
+    "is_reconditioned": 0,
+    "power_shutters": 1,
+    "power_mirrors": 0
+  }
+}

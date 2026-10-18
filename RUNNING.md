@@ -67,25 +67,45 @@ python -m venv venv
 venv\Scripts\activate
 pip install -r requirements.txt
 copy .env.example .env       # Windows; `cp .env.example .env` on macOS/Linux
+python preprocessing/clean_real_data.py     # first time only: builds data/processed/alto_real.csv
+python models/train_market_model.py         # first time only: builds models/saved/market_model.joblib
 python api/app.py
 ```
 
+The two build steps are needed once per machine (and again after adding new listings to `data/raw/ALTO_data_v2.xlsx`), because `models/saved/` and `data/processed/` are not committed.
+
 Same Bearer-token auth as Component 3. Docs / test UI: http://localhost:5004/apidocs/
 
-## 5. Mobile App (Flutter)
+## 5. API gateway (port 9000)
+
+The app talks only to the gateway, which forwards each request to the right backend and adds its token.
+By default the app uses the deployed Azure gateway; to test your local backends, run the gateway locally too.
+
+```bash
+cd api_gateway
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+copy .env.example .env       # then set ENGINE_API_TOKEN / VALUATION_API_TOKEN to each component's API_SECRET_TOKEN
+uvicorn app:app --host 0.0.0.0 --port 9000
+```
+
+## 6. Mobile App (Flutter)
 
 ```bash
 cd watinakama_app
 flutter pub get
 ```
 
-Open [lib/services/api_service.dart](watinakama_app/lib/services/api_service.dart) and set `baseIp` to your development machine's **LAN IP address** (e.g. `192.168.1.10`) — not `127.0.0.1` or `localhost`, since the app needs to reach it from a phone or emulator over the network.
+| Where the app runs | Command |
+| :--- | :--- |
+| Against the deployed Azure services | `flutter run` |
+| Real phone by USB, local services (most reliable) | `powershell -ExecutionPolicy Bypass -File run_on_phone.ps1 -Usb` (forwards port 9000 over the cable; any Wi-Fi) |
+| Real phone on the same Wi-Fi, local services | `powershell -ExecutionPolicy Bypass -File run_on_phone.ps1` (looks up the PC's current Wi-Fi address) |
+| Android emulator, local services | `flutter run --dart-define=GATEWAY_BASE_URL=http://10.0.2.2:9000` |
+| Windows desktop / Chrome, local services | `flutter run --dart-define=GATEWAY_BASE_URL=http://127.0.0.1:9000` |
 
-```bash
-flutter run
-```
-
-The app pings all four backend ports on startup to confirm they're reachable before letting you begin an inspection, so start all four backends first.
+The PC's Wi-Fi address changes when it joins a different network, so on a phone always launch through `run_on_phone.ps1`.
 
 ---
 
@@ -94,4 +114,4 @@ The app pings all four backend ports on startup to confirm they're reachable bef
 - **Port 8000 already in use / VIN results look like body-condition results** — Component 2 was probably started with `python main.py` instead of the `uvicorn` command above.
 - **"model file not found" warning on Component 2 startup** — the `.h5` model files must sit directly inside `component2-body-condition/`, not a subfolder.
 - **401 Unauthorized from Component 3 or 4** — the `Authorization` header's token doesn't match `API_SECRET_TOKEN` in that component's `.env`.
-- **App can't reach any backend** — phone/emulator and dev machine must be on the same network; double-check `baseIp`, and make sure your firewall allows inbound connections on `8000`, `8080`, `5003`, `5004`.
+- **App can't reach any backend** — phone/emulator and dev machine must be on the same network; check the local gateway is running, relaunch with `run_on_phone.ps1` after changing Wi-Fi, and make sure your firewall allows inbound connections on port `9000`.

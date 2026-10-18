@@ -22,6 +22,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
   Map<String, dynamic> _valuationResult = {};
   bool _isLoading = true;
   bool _hasError = false;
+  bool _outOfScope = false;
   String _errorMessage = '';
   String _userName = '';
   String? _profilePicPath;
@@ -106,8 +107,13 @@ class _ResultsScreenState extends State<ResultsScreen> {
       'listed_price_million': args['listed_price_million'] ?? 3.5,
       'fault_class': args['fault_class'] ?? 'healthy',
       'confidence': args['confidence'] ?? 1.0,
+      // The engine deduction is based on the health score; fault_class is only a fallback
+      'mhs_score': args['mhs_score'],
       'body_score': args['body_score'] ?? 100,
-      'vin_status': args['vin_status'] ?? 'original',
+      'vin_status': args['vin_status'] ?? 'unknown',
+      // Lets the valuation service refuse cars it was not trained on
+      'make': args['make'],
+      'model': args['model'],
     };
 
     Map<String, dynamic> result;
@@ -123,8 +129,9 @@ class _ResultsScreenState extends State<ResultsScreen> {
       setState(() {
         _hasError = false;
         _fairValueMillion = (result['fair_value_lkr'] ?? 0) / 1000000;
-        _rangeMinMillion = (result['negotiation_min_lkr'] ?? 0) / 1000000;
-        _rangeMaxMillion = (result['negotiation_max_lkr'] ?? 0) / 1000000;
+        // The range where 80% of comparable real listings fall
+        _rangeMinMillion = (result['fair_low_lkr'] ?? result['negotiation_min_lkr'] ?? 0) / 1000000;
+        _rangeMaxMillion = (result['fair_high_lkr'] ?? result['negotiation_max_lkr'] ?? 0) / 1000000;
         _bodyConditionScore = _parseScore(args['body_score'], 100.0);
         _engineConditionScore = _parseScore(args['mhs_score'], _parseConfidence(args['confidence']) * 100);
 
@@ -151,6 +158,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
       // but surface an explicit error instead of a made-up price.
       setState(() {
         _hasError = true;
+        _outOfScope = result['status'] == 'out_of_scope';
         _errorMessage = result['message'] ?? 'Could not reach the valuation service.';
         _bodyConditionScore = _parseScore(args['body_score'], 0.0);
         _engineConditionScore = _parseScore(args['mhs_score'], _parseConfidence(args['confidence']) * 100);
@@ -305,8 +313,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
         vinColor = AppColors.statusGreen;
         break;
       case 'Altered':
-        vinText = "Altered — do not purchase";
-        vinColor = AppColors.statusRed;
+        vinText = "VIN issue — check further before buying";
+        vinColor = AppColors.statusAmber;
         break;
       case 'Needs Review':
         vinText = "Verification required";
@@ -392,9 +400,9 @@ class _ResultsScreenState extends State<ResultsScreen> {
         children: [
           const Icon(Icons.error_outline, color: AppColors.statusAmber, size: 40),
           const SizedBox(height: 12),
-          const Text(
-            "Market Value Unavailable",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textWhite),
+          Text(
+            _outOfScope ? "Can't Value This Car Reliably" : "Market Value Unavailable",
+            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textWhite),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
@@ -403,48 +411,61 @@ class _ResultsScreenState extends State<ResultsScreen> {
             style: const TextStyle(color: AppColors.textGray, fontSize: 13),
             textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 16),
-          CustomButton(
-            text: "Retry",
-            fullWidth: false,
-            onPressed: () {
-              setState(() => _isLoading = true);
-              _fetchValuation();
-            },
-          ),
+          if (!_outOfScope) ...[
+            const SizedBox(height: 16),
+            CustomButton(
+              text: "Retry",
+              fullWidth: false,
+              onPressed: () {
+                setState(() => _isLoading = true);
+                _fetchValuation();
+              },
+            ),
+          ],
         ],
       ),
     );
   }
 
   Widget _buildFairValueCard() {
-    if (_verdict == 'DO_NOT_BUY') {
+    // Altered VIN: no price until the VIN is checked (DO_NOT_BUY is the older name)
+    if (_verdict == 'CHECK_VIN' || _verdict == 'DO_NOT_BUY') {
       return AppCard(
         padding: const EdgeInsets.all(20),
-        borderColor: AppColors.statusRed,
+        borderColor: AppColors.statusAmber,
         child: Column(
           children: [
             const Icon(
               Icons.warning_amber_rounded,
-              color: AppColors.statusRed,
+              color: AppColors.statusAmber,
               size: 48,
             ),
             const SizedBox(height: 12),
             const Text(
-              "VALUATION BLOCKED",
+              "VIN Needs Checking",
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.bold,
-                color: AppColors.statusRed,
+                color: AppColors.statusAmber,
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 8),
             Text(
-              _explanation.isNotEmpty ? _explanation : "This vehicle is blocked from valuation due to critical compliance/security risks.",
-              style: const TextStyle(color: AppColors.textGray, fontSize: 13),
+              _explanation.isNotEmpty
+                  ? _explanation
+                  : "There is an issue with this vehicle's VIN number. Please check this vehicle further before buying.",
+              style: const TextStyle(color: AppColors.textWhite, fontSize: 14),
               textAlign: TextAlign.center,
             ),
+            if (_valuationResult['explanation'] != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _valuationResult['explanation'],
+                style: const TextStyle(color: AppColors.textGray, fontSize: 12),
+                textAlign: TextAlign.center,
+              ),
+            ],
             const SizedBox(height: 16),
             _buildVerdictChip(),
           ],
@@ -473,10 +494,19 @@ class _ResultsScreenState extends State<ResultsScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            "Range LKR ${_rangeMinMillion}M  –  LKR ${_rangeMaxMillion}M",
+            "Fair range LKR ${_rangeMinMillion.toStringAsFixed(2)}M  –  LKR ${_rangeMaxMillion.toStringAsFixed(2)}M",
             style: const TextStyle(color: AppColors.textGray, fontSize: 13),
             textAlign: TextAlign.center,
           ),
+          if (_valuationResult['recommended_offer_lkr'] != null && _verdict != 'GOOD_DEAL') ...[
+            const SizedBox(height: 6),
+            Text(
+              "Recommended offer LKR ${_millions(_valuationResult['recommended_offer_lkr'])}M "
+              "(negotiate ${_millions(_valuationResult['negotiation_min_lkr'])}M – ${_millions(_valuationResult['negotiation_max_lkr'])}M)",
+              style: const TextStyle(color: AppColors.textWhite, fontSize: 12),
+              textAlign: TextAlign.center,
+            ),
+          ],
           if (_verdict.isNotEmpty) ...[
             const SizedBox(height: 12),
             _buildVerdictChip(),
@@ -491,7 +521,10 @@ class _ResultsScreenState extends State<ResultsScreen> {
     Color textColor;
     String label = _verdict.replaceAll('_', ' ');
 
-    if (_verdict == 'OVERPRICED' || _verdict == 'DO_NOT_BUY') {
+    if (_verdict == 'CHECK_VIN' || _verdict == 'DO_NOT_BUY') {
+      bgColor = AppColors.statusAmber.withValues(alpha: 0.2);
+      textColor = AppColors.statusAmber;
+    } else if (_verdict == 'OVERPRICED') {
       bgColor = AppColors.statusRed.withValues(alpha: 0.2);
       textColor = AppColors.statusRed;
     } else if (_verdict == 'GOOD_DEAL') {
@@ -519,86 +552,78 @@ class _ResultsScreenState extends State<ResultsScreen> {
     );
   }
 
+  String _millions(dynamic lkr) => ((lkr as num? ?? 0) / 1000000).toStringAsFixed(2);
+
+  String _signedLkr(num lkr) {
+    final abs = lkr.abs().round().toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
+    return "${lkr < 0 ? '−' : '+'}LKR $abs";
+  }
+
+  /// Price breakdown from the valuation service: the ML market price, what moved it,
+  /// and each condition deduction from the repair cost survey.
   Widget _buildDepreciationFactorsCard() {
-    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>? ?? {};
-    
-    // Calculate percentages based on deductions or scores
-    int bodyDep = (_valuationResult['body_deduction_lkr'] != null && _fairValueMillion > 0)
-        ? -((_valuationResult['body_deduction_lkr'] as num) / (_fairValueMillion * 1000000) * 100).round()
-        : -((100 - _bodyConditionScore) / 5).round();
-        
-    int mechDep = (_valuationResult['engine_deduction_lkr'] != null && _fairValueMillion > 0)
-        ? -((_valuationResult['engine_deduction_lkr'] as num) / (_fairValueMillion * 1000000) * 100).round()
-        : -((100 - _engineConditionScore) / 5).round();
+    final r = _valuationResult;
+    final factors = (r['price_factors'] as List? ?? []).cast<Map>();
+    final engineColor = r['engine_health_color']?.toString() ?? 'green';
 
-    // Estimate mileage and year depreciation
-    int mileageKm = args['mileage_km'] ?? 80000;
-    int mileageDep = -(mileageKm / 10000).round();
-    
-    int year = args['maf_year'] ?? 2015;
-    int yearDep = -(2026 - year);
-
-    final factors = [
-      {'label': 'Body Condition', 'value': bodyDep, 'color': AppColors.statusColorFor(_bodyConditionScore)},
-      {'label': 'Mileage', 'value': mileageDep, 'color': AppColors.statusAmber},
-      {'label': 'Mechanical', 'value': mechDep, 'color': AppColors.statusColorFor(_engineConditionScore)},
-      {'label': 'Year', 'value': yearDep, 'color': AppColors.primaryBlue},
+    final rows = <Map<String, dynamic>>[
+      {'label': 'Market value (good condition)', 'text': 'LKR ${_millions(r['base_market_value_lkr'])}M', 'color': AppColors.textWhite, 'bold': true},
+      ...factors.take(4).map((f) => {
+            'label': '   ${f['text'].toString().split(' for ').last}',
+            'text': _signedLkr(f['impact_lkr'] as num),
+            'color': (f['impact_lkr'] as num) < 0 ? AppColors.statusAmber : AppColors.statusGreen,
+          }),
+      {'label': 'Engine ($engineColor)', 'text': _signedLkr(-(r['engine_deduction_lkr'] as num? ?? 0)), 'color': AppColors.statusColorFor(_engineConditionScore)},
+      {'label': 'Body (${r['body_damage_category'] ?? 'none'} damage)', 'text': _signedLkr(-(r['body_deduction_lkr'] as num? ?? 0)), 'color': AppColors.statusColorFor(_bodyConditionScore)},
+      if ((r['vin_discount_lkr'] as num? ?? 0) > 0)
+        {'label': 'VIN not confirmed', 'text': _signedLkr(-(r['vin_discount_lkr'] as num)), 'color': AppColors.statusRed},
+      {'label': 'Fair value', 'text': 'LKR ${_millions(r['fair_value_lkr'])}M', 'color': AppColors.textWhite, 'bold': true},
     ];
-
 
     return AppCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            "Depreciation Factors",
+            "How This Price Was Calculated",
             style: TextStyle(color: AppColors.textWhite, fontWeight: FontWeight.bold, fontSize: 15),
           ),
-          const SizedBox(height: 14),
-          ...factors.map((f) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
+          const SizedBox(height: 4),
+          Text(
+            "Market value from ${r['market_as_of'] ?? 'recent'} Suzuki Alto listings; repair costs from a survey of local repair centres.",
+            style: const TextStyle(color: AppColors.textGray, fontSize: 11),
+          ),
+          const SizedBox(height: 12),
+          ...rows.map((row) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
                   children: [
-                    SizedBox(
-                      width: 130,
-                      child: Text(
-                        f['label'] as String,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: AppColors.textWhite, fontSize: 12),
-                      ),
-                    ),
                     Expanded(
-                      child: Stack(
-                        children: [
-                          Container(
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade300,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                          FractionallySizedBox(
-                            widthFactor: ((f['value'] as int).abs() / 20.0).clamp(0.0, 1.0),
-                            child: Container(
-                              height: 8,
-                              decoration: BoxDecoration(
-                                color: f['color'] as Color,
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                            ),
-                          ),
-                        ],
+                      child: Text(
+                        row['label'] as String,
+                        style: TextStyle(
+                          color: row['bold'] == true ? AppColors.textWhite : AppColors.textGray,
+                          fontSize: 12,
+                          fontWeight: row['bold'] == true ? FontWeight.bold : FontWeight.normal,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 8),
                     Text(
-                      "${f['value']}%",
-                      style: const TextStyle(color: AppColors.textGray, fontSize: 12),
+                      row['text'] as String,
+                      style: TextStyle(
+                        color: row['color'] as Color,
+                        fontSize: 12,
+                        fontWeight: row['bold'] == true ? FontWeight.bold : FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),
               )),
+          if (r['market_data_warning'] != null)
+            Text(
+              r['market_data_warning'],
+              style: const TextStyle(color: AppColors.statusAmber, fontSize: 11, fontStyle: FontStyle.italic),
+            ),
         ],
       ),
     );

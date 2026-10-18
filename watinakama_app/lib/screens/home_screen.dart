@@ -324,7 +324,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Color _verdictColor(String verdict) {
-    if (verdict == 'OVERPRICED' || verdict == 'DO_NOT_BUY') return AppColors.statusRed;
+    if (verdict == 'CHECK_VIN' || verdict == 'DO_NOT_BUY') return AppColors.statusAmber;
+    if (verdict == 'OVERPRICED') return AppColors.statusRed;
     if (verdict == 'GOOD_DEAL') return AppColors.statusGreen;
     return AppColors.primaryBlue;
   }

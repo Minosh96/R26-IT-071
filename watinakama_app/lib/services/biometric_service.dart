@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:local_auth/local_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -26,12 +27,12 @@ class BiometricService {
       final List<BiometricType> availableBiometrics = await _auth.getAvailableBiometrics();
       
       if (!isSupported) {
-        print("Biometrics not supported on this device");
+        debugPrint("Biometrics not supported on this device");
         return false;
       }
 
       if (!canCheck && availableBiometrics.isEmpty) {
-        print("No biometrics enrolled or cannot check");
+        debugPrint("No biometrics enrolled or cannot check");
         return false;
       }
 
@@ -44,7 +45,7 @@ class BiometricService {
         ),
       );
     } catch (e) {
-      print("Biometric Auth Error: $e");
+      debugPrint("Biometric Auth Error: $e");
       return false;
     }
   }
