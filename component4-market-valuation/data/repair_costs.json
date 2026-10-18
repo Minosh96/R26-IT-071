@@ -57,10 +57,28 @@
     }
   },
 
+  "engine_health": {
+    "_note": "Engine deduction is based on component 3's Mechanical Health Score (MHS) colour, not the fault name, because component 3 is reliable at healthy vs faulty but weaker at naming the fault. typical_* cover all surveyed engine faults above; expected is the average of their midpoints.",
+    "typical_min": 5000,
+    "typical_max": 85000,
+    "expected": 28000,
+    "bands": {
+      "green": {"min_mhs": 80, "share": 0.0, "description": "Engine sounds healthy"},
+      "amber": {"min_mhs": 50, "share": 0.5, "description": "Possible engine problem - partial repair cost deducted, have a mechanic check it"},
+      "red":   {"min_mhs": 0,  "share": 1.0, "description": "Likely engine fault - full typical repair cost deducted"}
+    }
+  },
+
+  "vin_policy": {
+    "_note": "Policy setting, not an estimate: a VIN the system could not confirm carries legal and resale risk, so the fair value is discounted and the car can never be shown as a good deal.",
+    "needs_review_discount_pct": 10
+  },
+
   "body_damage_categories": {
-    "none":     {"min": 0,      "max": 0,      "description": "No visible damage"},
-    "minor":    {"min": 10000,  "max": 25000,  "description": "Surface scratches, small dents, minor paint chips"},
-    "moderate": {"min": 25000,  "max": 80000,  "description": "Dented panels, broken lights, damaged bumpers"},
-    "severe":   {"min": 80000,  "max": 200000, "description": "Multiple damaged panels, bonnet, door replacement, full repaint"}
+    "_score_bands": "Lowest body_score (from component 2) for each category. Aligned with component 2's condition labels: 100 = no damage, 90-99 Excellent, 60-89 Good/Fair, below 60 Poor/Severely damaged.",
+    "none":     {"min_score": 100, "min": 0,      "max": 0,      "description": "No visible damage"},
+    "minor":    {"min_score": 90,  "min": 10000,  "max": 25000,  "description": "Surface scratches, small dents, minor paint chips"},
+    "moderate": {"min_score": 60,  "min": 25000,  "max": 80000,  "description": "Dented panels, broken lights, damaged bumpers"},
+    "severe":   {"min_score": 0,   "min": 80000,  "max": 200000, "description": "Multiple damaged panels, bonnet, door replacement, full repaint"}
   }
 }
