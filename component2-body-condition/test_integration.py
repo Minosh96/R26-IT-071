@@ -45,8 +45,18 @@ def check(name, cond, detail=""):
 
 
 def pick(damage, part, seed=7):
-    files = sorted(p for p in (DATA / damage / part).iterdir()
-                   if p.suffix.lower() in {".jpg", ".jpeg", ".png"})
+    folder = DATA / damage / part
+    files = []
+    if folder.exists():
+        files = sorted(p for p in folder.iterdir()
+                       if p.suffix.lower() in {".jpg", ".jpeg", ".png"})
+    if not files:
+        fallback = DATA / "Undamaged" / part
+        if fallback.exists():
+            files = sorted(p for p in fallback.iterdir()
+                           if p.suffix.lower() in {".jpg", ".jpeg", ".png"})
+    if not files:
+        raise FileNotFoundError(f"No test images found for part '{part}' in {DATA}")
     return random.Random(seed).choice(files)
 
 
@@ -105,6 +115,17 @@ def main():
                       files={"image": ("x.jpg", b"not an image", "image/jpeg")}, timeout=30)
     check("corrupt image -> 4xx/5xx with message (no crash)",
           r.status_code >= 400 and "detail" in r.json(), r.text)
+    
+    # Non-car image rejection check
+    import io
+    from PIL import Image
+    blank_io = io.BytesIO()
+    Image.new("RGB", (224, 224), (200, 200, 200)).save(blank_io, format="JPEG")
+    r_nc = requests.post(f"{gw}/body/api/v1/validate-view", params={"expected_view": "front"},
+                         files={"image": ("blank.jpg", blank_io.getvalue(), "image/jpeg")}, timeout=30)
+    check("non-car image rejected with clear car-related message",
+          r_nc.status_code == 200 and r_nc.json().get("valid") is False and "car-related image" in r_nc.json().get("message", ""),
+          r_nc.text)
 
     print("\n=== 5. Full /analyze – all views correct")
     r = analyze(gw, samples)

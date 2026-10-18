@@ -378,7 +378,9 @@ def predict_body_condition(models, views, conf_threshold=0.25):
 
         if view_model is not None:
             try:
-                validation_result = validate_view(view_model, contents, normalized_view)
+                validation_result = validate_view(
+                    view_model, contents, normalized_view, part_model=part_model
+                )
                 view_validation[normalized_view] = validation_result
 
                 if not validation_result.get("valid", True):
